@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Format {
+  STANDARD
+  PIONEER
+  MODERN
+  LEGACY
+  VINTAGE
+  PAUPER
+  COMMANDER
+  DUEL_COMMANDER
+  OATHBREAKER
+  BRAWL
+  HISTORIC_BRAWL
+  HISTORIC
+  EXPLORER
+  TIMELESS
+  ALCHEMY
+  FRONTIER
+  GLADIATOR
+  CANADIAN_HIGHLANDER
+  AUSTRALIAN_HIGHLANDER
+  TINY_LEADERS
+  ARTISAN
+  PENNY_DREADFUL
+  PREMODERN
+  ALPHA_40
+  BOOSTER_DRAFT
+  SEALED
+  CUBE
+  JUMPSTART
+  PACK_WARS
+  PLANECHASE
+  ARCHENEMY
+  ARCHENEMY_COMMANDER
+  TWO_HEADED_GIANT
+  CONSPIRACY
+  FREEFORM
+  MOMIR_BASIC
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  createdAt    DateTime @default(now())
+
+  sessions     Session[]
+  decks        Deck[]
+  groupMembers GroupMember[]
+  gamePlayers  GamePlayer[]
+  sentInvites  GroupInvite[] @relation("InviteSender")
+  ownedGroups  Group[]       @relation("GroupOwner")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Group {
+  id          String   @id @default(cuid())
+  name        String
+  ownerId     String
+  owner       User     @relation("GroupOwner", fields: [ownerId], references: [id])
+  format      Format
+  playerCount Int
+  createdAt   DateTime @default(now())
+
+  members GroupMember[]
+  invites GroupInvite[]
+  games   Game[]
+}
+
+model GroupMember {
+  id       String    @id @default(cuid())
+  groupId  String
+  group    Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String    @default("member")
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime? // null = still active; set = left, history stays intact
+
+  @@unique([groupId, userId])
+}
+
+model GroupInvite {
+  id        String    @id @default(cuid())
+  groupId   String
+  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  code      String    @unique @default(cuid())
+  createdBy String
+  sender    User      @relation("InviteSender", fields: [createdBy], references: [id])
+  expiresAt DateTime?
+  maxUses   Int?
+  useCount  Int       @default(0)
+  createdAt DateTime  @default(now())
+}
+
+model Deck {
+  id            String   @id @default(cuid())
+  ownerId       String
+  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name          String
+  format        Format?
+  formatRaw     String?
+  moxfieldId    String?
+  moxfieldUrl   String?
+  commanders    String[]
+  colorIdentity String[]
+  cardCount     Int?
+  rawData       Json?
+  importedAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  gamePlayers GamePlayer[]
+
+  @@index([ownerId])
+}
+
+model Game {
+  id           String    @id @default(cuid())
+  groupId      String
+  group        Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  format       Format
+  startingLife Int
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  turnCount    Int?
+  notes        String?
+
+  players GamePlayer[]
+
+  @@index([groupId])
+}
+
+model GamePlayer {
+  id              String    @id @default(cuid())
+  gameId          String
+  game            Game      @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  deckId          String?
+  deck            Deck?     @relation(fields: [deckId], references: [id])
+  seatOrder       Int
+  startingLife    Int
+  finalLife       Int?
+  isWinner        Boolean   @default(false)
+  eliminatedAt    DateTime?
+  eliminationTurn Int?
+
+  @@unique([gameId, userId])
+  @@index([userId])
+  @@index([deckId])
+}
