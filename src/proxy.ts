@@ -7,7 +7,7 @@ function isMobile(userAgent: string) {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(userAgent);
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (pathname.startsWith("/_next") || pathname.startsWith("/icons") || pathname === "/manifest.json") {
