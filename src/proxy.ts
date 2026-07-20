@@ -10,7 +10,7 @@ function isMobile(userAgent: string) {
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  if (pathname.startsWith("/_next") || pathname.startsWith("/icons") || pathname === "/manifest.json") {
+  if (pathname.startsWith("/_next") || pathname.startsWith("/icons") || pathname === "/manifest.json" || pathname === "/sw.js") {
     return NextResponse.next();
   }
 
