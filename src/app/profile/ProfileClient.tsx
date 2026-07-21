@@ -25,6 +25,7 @@ type StatsResult = {
   groupsPlayed: Option[];
   decksUsed: Option[];
 };
+type TurnRow = { turn: number; count: number; percent: number };
 
 export default function ProfileClient({ displayName, email }: { displayName: string; email: string }) {
   const router = useRouter();
@@ -39,6 +40,10 @@ export default function ProfileClient({ displayName, email }: { displayName: str
   const [deckFilter, setDeckFilter] = useState("");
   const [playedFirstFilter, setPlayedFirstFilter] = useState<"" | "true" | "false">("");
 
+  const [turnGroupFilter, setTurnGroupFilter] = useState("");
+  const [turnPlayedFirstFilter, setTurnPlayedFirstFilter] = useState<"" | "true" | "false">("");
+  const [turnData, setTurnData] = useState<{ total: number; turns: TurnRow[] } | null>(null);
+
   useEffect(() => {
     loadDecks();
   }, []);
@@ -47,6 +52,15 @@ export default function ProfileClient({ displayName, email }: { displayName: str
     loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupFilter, deckFilter, playedFirstFilter]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (turnGroupFilter) params.set("groupId", turnGroupFilter);
+    if (turnPlayedFirstFilter) params.set("playedFirst", turnPlayedFirstFilter);
+    fetch(`/api/profile/stats/turns?${params.toString()}`)
+      .then((r) => r.json())
+      .then(setTurnData);
+  }, [turnGroupFilter, turnPlayedFirstFilter]);
 
   async function loadDecks() {
     const res = await fetch("/api/decks");
@@ -137,6 +151,42 @@ export default function ProfileClient({ displayName, email }: { displayName: str
       </section>
 
       <section style={{ marginBottom: 32 }}>
+        <h2 style={sectionHeading}>Turns games ended on</h2>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <select value={turnGroupFilter} onChange={(e) => setTurnGroupFilter(e.target.value)} style={selectStyle}>
+            <option value="">All groups</option>
+            {stats?.groupsPlayed.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
+          <select
+            value={turnPlayedFirstFilter}
+            onChange={(e) => setTurnPlayedFirstFilter(e.target.value as "" | "true" | "false")}
+            style={selectStyle}
+          >
+            <option value="">Played first: any</option>
+            <option value="true">Played first: yes</option>
+            <option value="false">Played first: no</option>
+          </select>
+        </div>
+
+        {!turnData && <p style={{ opacity: 0.6, fontSize: 14 }}>Loading…</p>}
+        {turnData && turnData.turns.length === 0 && <p style={{ opacity: 0.6, fontSize: 14 }}>No games with a recorded turn count yet.</p>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {turnData?.turns.map((t) => (
+            <div key={t.turn} style={{ display: "flex", alignItems: "center", gap: 10, background: "#1a1a1a", borderRadius: 6, padding: "8px 12px" }}>
+              <span style={{ fontSize: 13, width: 56, flexShrink: 0 }}>Turn {t.turn}</span>
+              <div style={{ flex: 1, height: 6, background: "#262b35", borderRadius: 3, overflow: "hidden" }}>
+                <div style={{ width: `${t.percent}%`, height: "100%", background: "#c9a227" }} />
+              </div>
+              <span style={{ fontSize: 13, width: 44, textAlign: "right", flexShrink: 0 }}>{t.percent.toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 32 }}>
         <h2 style={sectionHeading}>My decks</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
           {decks.map((d) => (
@@ -151,26 +201,26 @@ export default function ProfileClient({ displayName, email }: { displayName: str
           {decks.length === 0 && <p style={{ opacity: 0.6, fontSize: 14 }}>No decks yet.</p>}
         </div>
         <form onSubmit={handleAddDeck} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-  <input
-    placeholder="Deck name"
-    value={deckName}
-    onChange={(e) => setDeckName(e.target.value)}
-    required
-    style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
-  />
-  <select
-    value={deckFormat}
-    onChange={(e) => setDeckFormat(e.target.value)}
-    style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
-  >
-    {FORMAT_OPTIONS.map((f) => (
-      <option key={f.key} value={f.key}>{f.label}</option>
-    ))}
-  </select>
-  <button type="submit" disabled={addingDeck} style={{ ...ghostBtn, width: "100%" }}>
-    {addingDeck ? "Adding…" : "Add deck"}
-  </button>
-</form>
+          <input
+            placeholder="Deck name"
+            value={deckName}
+            onChange={(e) => setDeckName(e.target.value)}
+            required
+            style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
+          />
+          <select
+            value={deckFormat}
+            onChange={(e) => setDeckFormat(e.target.value)}
+            style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
+          >
+            {FORMAT_OPTIONS.map((f) => (
+              <option key={f.key} value={f.key}>{f.label}</option>
+            ))}
+          </select>
+          <button type="submit" disabled={addingDeck} style={{ ...ghostBtn, width: "100%" }}>
+            {addingDeck ? "Adding…" : "Add deck"}
+          </button>
+        </form>
       </section>
 
       <button onClick={handleLogout} style={dangerBtn}>Log out</button>

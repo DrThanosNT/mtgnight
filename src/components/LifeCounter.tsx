@@ -44,6 +44,12 @@ type GameEndResult = {
 
 type Phase = "setup" | "firstPlayer" | "playing" | "summary";
 
+function vibrate(ms: number) {
+  if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+    navigator.vibrate(ms);
+  }
+}
+
 // ---------- Main component ----------
 
 export default function LifeCounterGame(props: {
@@ -328,7 +334,7 @@ export default function LifeCounterGame(props: {
       <div
         style={{
           display: "grid", gridTemplateColumns: layout.cols, gridTemplateRows: layout.rows,
-          gap: 12, flex: 1, minHeight: 0, minWidth: 0,
+          gap: 8, flex: 1, minHeight: 0, minWidth: 0,
         }}
       >
         {players.map((p, i) => (
@@ -388,19 +394,30 @@ function RotatableBlock({ rotation, children }: { rotation: 0 | 90 | 180 | 270; 
 }
 
 // ---------- Tap-vs-hold life button ----------
+// Tap = ±1, released before 2s. Hold past 2s = ±10 immediately, then ±10
+// again every 2s for as long as it's held. Every actual change fires a
+// short vibration and reports its amount up via onChange.
+
+const HOLD_THRESHOLD_MS = 2000;
+const HOLD_REPEAT_MS = 2000;
 
 function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) => void }) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const holdTriggeredRef = useRef(false);
 
+  function fire(delta: number) {
+    onChange(delta);
+    vibrate(15);
+  }
+
   function start() {
     holdTriggeredRef.current = false;
     timeoutRef.current = setTimeout(() => {
       holdTriggeredRef.current = true;
-      onChange(sign * 10);
-      intervalRef.current = setInterval(() => onChange(sign * 10), 1500);
-    }, 1500);
+      fire(sign * 10);
+      intervalRef.current = setInterval(() => fire(sign * 10), HOLD_REPEAT_MS);
+    }, HOLD_THRESHOLD_MS);
   }
 
   function end() {
@@ -413,7 +430,7 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
       intervalRef.current = null;
     }
     if (!holdTriggeredRef.current) {
-      onChange(sign);
+      fire(sign);
     }
     holdTriggeredRef.current = false;
   }
@@ -432,6 +449,9 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
 }
 
 // ---------- Player block content ----------
+// Layout: name pinned top, life number centered (large) with a running
+// change indicator, +/- pinned to the left/right edges, counters pinned
+// bottom.
 
 function PlayerBlockContent({
   player,
@@ -451,78 +471,145 @@ function PlayerBlockContent({
   const [panel, setPanel] = useState<"none" | "counters" | "commanderDamage">("none");
   const opponents = allPlayers.filter((p) => p.id !== player.id);
 
+  // Running delta indicator: accumulates changes, resets its own 4s
+  // hide-timer on every new change (so rapid taps keep extending the window
+  // rather than flickering it away mid-sequence).
+  const [delta, setDelta] = useState<number | null>(null);
+  const deltaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleLifeChange(amount: number) {
+    onLifeChange(amount);
+    setDelta((prev) => (prev === null ? amount : prev + amount));
+    if (deltaTimeoutRef.current) clearTimeout(deltaTimeoutRef.current);
+    deltaTimeoutRef.current = setTimeout(() => setDelta(null), 4000);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (deltaTimeoutRef.current) clearTimeout(deltaTimeoutRef.current);
+    };
+  }, []);
+
   return (
     <div
       style={{
-        width: "100%", height: "100%", background: player.color,
-        borderRadius: 22, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        padding: "4px 8px", outline: isActiveTurn ? `3px solid ${colors.gold}` : "none", color: "white",
+        position: "relative", width: "100%", height: "100%", background: player.color,
+        borderRadius: 22, outline: isActiveTurn ? `3px solid ${colors.gold}` : "none", color: "white",
         userSelect: "none", overflow: "hidden", boxSizing: "border-box",
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
-      <div style={{ fontWeight: 600, fontSize: "clamp(11px, 3vmin, 15px)", marginBottom: 2 }}>{player.name}</div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: "clamp(6px, 3vmin, 16px)" }}>
-        <LifeButton sign={-1} onChange={onLifeChange} />
-        <span style={{ fontSize: "clamp(20px, 8vmin, 40px)", fontWeight: 700, minWidth: "1.5em", textAlign: "center" }}>
-          {player.life}
-        </span>
-        <LifeButton sign={1} onChange={onLifeChange} />
+      {/* Name - top */}
+      <div
+        style={{
+          position: "absolute", top: 6, left: 0, right: 0, textAlign: "center",
+          fontWeight: 600, fontSize: "clamp(11px, 3vmin, 15px)",
+        }}
+      >
+        {player.name}
       </div>
 
-      <div style={{ display: "flex", gap: 4, marginTop: 3 }}>
-        <button style={styles.tinyBtn} onClick={() => setPanel(panel === "counters" ? "none" : "counters")}>
-          {panel === "counters" ? "Hide" : "Counters"}
-        </button>
-        <button style={styles.tinyBtn} onClick={() => setPanel(panel === "commanderDamage" ? "none" : "commanderDamage")}>
-          Cmdr Dmg
-        </button>
+      {/* Minus - pinned left edge, vertically centered */}
+      <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)" }}>
+        <LifeButton sign={-1} onChange={handleLifeChange} />
       </div>
 
-      {panel === "counters" && (
-        <div style={{ ...styles.counterGrid, maxHeight: "40%", overflowY: "auto" }}>
-          {COUNTER_TYPES.map((type) => (
-            <div key={type} style={styles.counterRow}>
-              <span style={{ ...styles.counterBadge, background: COUNTER_META[type].badgeColor }}>
-                {COUNTER_META[type].tag}
-              </span>
-              <button style={styles.tinyBtn} onClick={() => onCounterChange(type, -1)}>-</button>
-              <span style={{ minWidth: 16, textAlign: "center" }}>{player.counters[type]}</span>
-              <button style={styles.tinyBtn} onClick={() => onCounterChange(type, 1)}>+</button>
-            </div>
-          ))}
+      {/* Life number - centered, with running delta badge */}
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: "clamp(30px, 13vmin, 64px)", fontWeight: 700 }}>{player.life}</span>
+          {delta !== null && (
+            <span
+              style={{
+                position: "absolute", top: "-1.4em", right: "-1.6em",
+                fontSize: "clamp(11px, 3vmin, 15px)", fontWeight: 700,
+                color: delta >= 0 ? "#8fd18f" : "#e08080",
+                background: "rgba(0,0,0,0.45)", padding: "2px 6px", borderRadius: 8,
+              }}
+            >
+              {delta > 0 ? `+${delta}` : delta}
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
-      {panel === "commanderDamage" && (
-        <div style={{ ...styles.counterGrid, gridTemplateColumns: "1fr", maxHeight: "40%", overflowY: "auto" }}>
-          {opponents.map((opp) => {
-            const dmg = player.commanderDamageTaken[opp.id] ?? 0;
-            const lethal = dmg >= 21;
-            return (
-              <div key={opp.id} style={styles.counterRow}>
-                <span
-                  style={{
-                    ...styles.counterBadge, background: opp.color,
-                    outline: lethal ? "2px solid #ff5050" : "none",
-                  }}
-                >
-                  {opp.name.slice(0, 3)}
+      {/* Plus - pinned right edge, vertically centered */}
+      <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)" }}>
+        <LifeButton sign={1} onChange={handleLifeChange} />
+      </div>
+
+      {/* Counters - pinned bottom, with side padding so it never sits under the +/- buttons */}
+      <div
+        style={{
+          position: "absolute", bottom: 4, left: 0, right: 0,
+          paddingLeft: "clamp(36px, 12vmin, 52px)", paddingRight: "clamp(36px, 12vmin, 52px)",
+          boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+        }}
+      >
+        <div style={{ display: "flex", gap: 4 }}>
+          <button style={styles.tinyBtn} onClick={() => setPanel(panel === "counters" ? "none" : "counters")}>
+            {panel === "counters" ? "Hide" : "Counters"}
+          </button>
+          <button style={styles.tinyBtn} onClick={() => setPanel(panel === "commanderDamage" ? "none" : "commanderDamage")}>
+            Cmdr Dmg
+          </button>
+        </div>
+
+        {panel === "counters" && (
+          <div style={{ ...styles.counterGrid, maxHeight: "34vh", overflowY: "auto", width: "100%" }}>
+            {COUNTER_TYPES.map((type) => (
+              <div key={type} style={styles.counterRow}>
+                <span style={{ ...styles.counterBadge, background: COUNTER_META[type].badgeColor }}>
+                  {COUNTER_META[type].tag}
                 </span>
-                <button style={styles.tinyBtn} onClick={() => onCommanderDamageChange(opp.id, -1)}>-</button>
-                <span style={{ minWidth: 16, textAlign: "center", color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
-                <button style={styles.tinyBtn} onClick={() => onCommanderDamageChange(opp.id, 1)}>+</button>
+                <button style={styles.tinyBtn} onClick={() => onCounterChange(type, -1)}>-</button>
+                <span style={{ minWidth: 16, textAlign: "center" }}>{player.counters[type]}</span>
+                <button style={styles.tinyBtn} onClick={() => onCounterChange(type, 1)}>+</button>
               </div>
-            );
-          })}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+
+        {panel === "commanderDamage" && (
+          <div style={{ ...styles.counterGrid, gridTemplateColumns: "1fr", maxHeight: "34vh", overflowY: "auto", width: "100%" }}>
+            {opponents.map((opp) => {
+              const dmg = player.commanderDamageTaken[opp.id] ?? 0;
+              const lethal = dmg >= 21;
+              return (
+                <div key={opp.id} style={styles.counterRow}>
+                  <span
+                    style={{
+                      ...styles.counterBadge, background: opp.color,
+                      outline: lethal ? "2px solid #ff5050" : "none",
+                    }}
+                  >
+                    {opp.name.slice(0, 3)}
+                  </span>
+                  <button style={styles.tinyBtn} onClick={() => onCommanderDamageChange(opp.id, -1)}>-</button>
+                  <span style={{ minWidth: 16, textAlign: "center", color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
+                  <button style={styles.tinyBtn} onClick={() => onCommanderDamageChange(opp.id, 1)}>+</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
 // ---------- Layout logic ----------
+// 2 players: top/bottom split (unchanged - natural pass-the-phone split).
+// 3 players: top seat stays upright-facing-away (180); the two bottom
+//   seats face sideways (90/270) rather than upright.
+// 4 & 6 players: every seat faces sideways - left column rotates 90,
+//   right column rotates 270 - so the whole board reads left-edge/right-edge
+//   rather than top/bottom.
+// 5 players: top 4 seats (2x2) face sideways like the 4-player case; the
+//   5th seat spans the full bottom row, upright. Row heights are chosen so
+//   every seat's area is equal (top rows carry 2 seats each, bottom row is
+//   the width of both columns, so top rows get 2x the height of the bottom
+//   row to balance area).
 
 type Cell = { row: string; col: string; rotation: 0 | 90 | 180 | 270 };
 
@@ -536,37 +623,37 @@ function getLayout(count: number): { cols: string; rows: string; cells: Cell[] }
         rows: "1fr 2fr",
         cells: [
           { row: "1", col: "1 / span 2", rotation: 180 },
-          { row: "2", col: "1", rotation: 0 },
-          { row: "2", col: "2", rotation: 0 },
+          { row: "2", col: "1", rotation: 90 },
+          { row: "2", col: "2", rotation: 270 },
         ],
       };
     case 4:
       return {
         cols: "1fr 1fr", rows: "1fr 1fr",
         cells: [
-          { row: "1", col: "1", rotation: 180 }, { row: "1", col: "2", rotation: 180 },
-          { row: "2", col: "1", rotation: 0 }, { row: "2", col: "2", rotation: 0 },
+          { row: "1", col: "1", rotation: 90 }, { row: "1", col: "2", rotation: 270 },
+          { row: "2", col: "1", rotation: 90 }, { row: "2", col: "2", rotation: 270 },
         ],
       };
     case 5:
       return {
-        cols: "1fr 1fr 1fr 1fr",
-        rows: "2fr 4fr 1fr",
+        cols: "1fr 1fr",
+        rows: "2fr 2fr 1fr",
         cells: [
-          { row: "1", col: "1 / span 2", rotation: 180 },
-          { row: "1", col: "3 / span 2", rotation: 180 },
+          { row: "1", col: "1", rotation: 90 },
+          { row: "1", col: "2", rotation: 270 },
           { row: "2", col: "1", rotation: 90 },
-          { row: "2", col: "4", rotation: 270 },
-          { row: "3", col: "1 / span 4", rotation: 0 },
+          { row: "2", col: "2", rotation: 270 },
+          { row: "3", col: "1 / span 2", rotation: 0 },
         ],
       };
     case 6:
       return {
-        cols: "1fr 1fr 1fr 1fr", rows: "1fr 2fr 1fr",
+        cols: "1fr 1fr", rows: "1fr 1fr 1fr",
         cells: [
-          { row: "1", col: "1 / span 2", rotation: 180 }, { row: "1", col: "3 / span 2", rotation: 180 },
-          { row: "2", col: "1", rotation: 90 }, { row: "2", col: "4", rotation: 270 },
-          { row: "3", col: "1 / span 2", rotation: 0 }, { row: "3", col: "3 / span 2", rotation: 0 },
+          { row: "1", col: "1", rotation: 90 }, { row: "1", col: "2", rotation: 270 },
+          { row: "2", col: "1", rotation: 90 }, { row: "2", col: "2", rotation: 270 },
+          { row: "3", col: "1", rotation: 90 }, { row: "3", col: "2", rotation: 270 },
         ],
       };
     default: {
@@ -604,8 +691,8 @@ const subtextStyle: React.CSSProperties = {
 // ---------- Styles ----------
 
 const lifeButtonStyle: React.CSSProperties = {
-  width: "clamp(32px, 10vmin, 44px)", height: "clamp(32px, 10vmin, 44px)", borderRadius: "50%",
-  border: "none", fontSize: "clamp(16px, 5vmin, 24px)", background: "rgba(0,0,0,0.35)",
+  width: "clamp(30px, 9vmin, 40px)", height: "clamp(30px, 9vmin, 40px)", borderRadius: "50%",
+  border: "none", fontSize: "clamp(15px, 4.5vmin, 22px)", background: "rgba(0,0,0,0.35)",
   color: "white", cursor: "pointer", flexShrink: 0,
 };
 
@@ -629,7 +716,7 @@ const styles: Record<string, React.CSSProperties> = {
   smallBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer" },
   tinyBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 6, padding: "2px 6px", fontSize: 12, cursor: "pointer" },
   topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", color: "white", padding: "4px 8px", marginBottom: 8, flexShrink: 0 },
-  counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginTop: 6, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 6 },
+  counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginTop: 2, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 6 },
   counterRow: { display: "flex", alignItems: "center", gap: 4, fontSize: 12 },
   counterBadge: { fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 6, minWidth: 26, textAlign: "center" },
 };
