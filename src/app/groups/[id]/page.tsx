@@ -22,11 +22,6 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
     orderBy: { joinedAt: "asc" },
   });
 
-  const myDecks = await prisma.deck.findMany({
-    where: { ownerId: user.id, format: group.format },
-    select: { id: true, name: true, commanders: true, cardCount: true },
-  });
-
   return (
     <GroupDetailClient
       group={{ id: group.id, name: group.name, format: group.format, playerCount: group.playerCount }}
@@ -36,7 +31,6 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
         isOwner: m.role === "owner",
         isMe: m.user.id === user.id,
       }))}
-      myDecks={myDecks}
       isOwner={membership.role === "owner"}
     />
   );
