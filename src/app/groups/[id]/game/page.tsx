@@ -63,7 +63,12 @@ export default function GroupGameSetupPage() {
   if (loading) return <p style={{ color: "white", padding: 24 }}>Loading…</p>;
   if (error || !group) return <p style={{ color: "white", padding: 24 }}>{error ?? "Group not found."}</p>;
 
-  const everyoneHasADeck = members.every((m) => Boolean(selectedDeck[m.userId]));
+  // A member is "ready" if they either picked a deck, or genuinely have no
+  // decks to pick from at all - in that case the game just proceeds without
+  // a deck attached for them.
+  const everyoneHasADeck = members.every(
+    (m) => decksByMember[m.userId]?.length === 0 || Boolean(selectedDeck[m.userId])
+  );
 
   if (ready) {
     return (
@@ -103,7 +108,9 @@ export default function GroupGameSetupPage() {
           <div key={m.userId} style={{ marginBottom: 20 }}>
             <div style={{ fontWeight: 600, marginBottom: 6 }}>{m.displayName}</div>
             {decks.length === 0 ? (
-              <p style={{ fontSize: 13, opacity: 0.7 }}>No {group.format} decks on their profile yet.</p>
+              <p style={{ fontSize: 13, opacity: 0.7 }}>
+                No {group.format} decks on their profile — this game will be recorded without one for them.
+              </p>
             ) : (
               <DeckPicker
                 decks={decks}

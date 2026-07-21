@@ -395,8 +395,13 @@ function RotatableBlock({ rotation, children }: { rotation: 0 | 90 | 180 | 270; 
 
 // ---------- Tap-vs-hold life button ----------
 // Tap = ±1, released before 2s. Hold past 2s = ±10 immediately, then ±10
-// again every 2s for as long as it's held. Every actual change fires a
-// short vibration and reports its amount up via onChange.
+// again every 2s for as long as it's held.
+//
+// activeRef guards against double-firing: on touchscreens, lifting a
+// finger off the button fires BOTH pointerup and pointerleave in quick
+// succession (the touch point "leaves" the element as it disappears).
+// Without this guard, end() ran twice per tap, firing the ±1 change
+// twice - this is what caused every tap to move life by 2 instead of 1.
 
 const HOLD_THRESHOLD_MS = 2000;
 const HOLD_REPEAT_MS = 2000;
@@ -405,13 +410,17 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const holdTriggeredRef = useRef(false);
+  const activeRef = useRef(false);
 
   function fire(delta: number) {
     onChange(delta);
     vibrate(15);
   }
 
-  function start() {
+  function start(e: React.PointerEvent) {
+    e.preventDefault();
+    if (activeRef.current) return;
+    activeRef.current = true;
     holdTriggeredRef.current = false;
     timeoutRef.current = setTimeout(() => {
       holdTriggeredRef.current = true;
@@ -421,6 +430,8 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
   }
 
   function end() {
+    if (!activeRef.current) return;
+    activeRef.current = false;
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -432,7 +443,6 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
     if (!holdTriggeredRef.current) {
       fire(sign);
     }
-    holdTriggeredRef.current = false;
   }
 
   return (
@@ -449,9 +459,16 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
 }
 
 // ---------- Player block content ----------
-// Layout: name pinned top, life number centered (large) with a running
-// change indicator, +/- pinned to the left/right edges, counters pinned
-// bottom.
+// Layout: name pinned top (bigger now), life number centered with a
+// running change indicator, +/- pinned to the left/right edges, counters
+// pinned bottom.
+//
+// The centered life-number wrapper below has pointerEvents: "none" - it
+// used to sit on top of the minus button in paint order (later siblings
+// in the DOM paint over earlier ones), silently swallowing every click
+// aimed at the minus button. Since this wrapper has no interactive
+// content of its own, disabling its pointer events lets clicks pass
+// straight through to whatever's actually underneath it.
 
 function PlayerBlockContent({
   player,
@@ -471,9 +488,6 @@ function PlayerBlockContent({
   const [panel, setPanel] = useState<"none" | "counters" | "commanderDamage">("none");
   const opponents = allPlayers.filter((p) => p.id !== player.id);
 
-  // Running delta indicator: accumulates changes, resets its own 4s
-  // hide-timer on every new change (so rapid taps keep extending the window
-  // rather than flickering it away mid-sequence).
   const [delta, setDelta] = useState<number | null>(null);
   const deltaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -499,23 +513,24 @@ function PlayerBlockContent({
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
-      {/* Name - top */}
+      {/* Name - top, bigger */}
       <div
         style={{
           position: "absolute", top: 6, left: 0, right: 0, textAlign: "center",
-          fontWeight: 600, fontSize: "clamp(11px, 3vmin, 15px)",
+          fontWeight: 700, fontSize: "clamp(14px, 4.2vmin, 20px)", pointerEvents: "none",
         }}
       >
         {player.name}
       </div>
 
       {/* Minus - pinned left edge, vertically centered */}
-      <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)" }}>
+      <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
         <LifeButton sign={-1} onChange={handleLifeChange} />
       </div>
 
-      {/* Life number - centered, with running delta badge */}
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Life number - centered, with running delta badge. pointerEvents:
+          none so it never blocks the buttons on either side of it. */}
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <span style={{ fontSize: "clamp(30px, 13vmin, 64px)", fontWeight: 700 }}>{player.life}</span>
           {delta !== null && (
@@ -534,7 +549,7 @@ function PlayerBlockContent({
       </div>
 
       {/* Plus - pinned right edge, vertically centered */}
-      <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)" }}>
+      <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
         <LifeButton sign={1} onChange={handleLifeChange} />
       </div>
 
@@ -599,17 +614,6 @@ function PlayerBlockContent({
 }
 
 // ---------- Layout logic ----------
-// 2 players: top/bottom split (unchanged - natural pass-the-phone split).
-// 3 players: top seat stays upright-facing-away (180); the two bottom
-//   seats face sideways (90/270) rather than upright.
-// 4 & 6 players: every seat faces sideways - left column rotates 90,
-//   right column rotates 270 - so the whole board reads left-edge/right-edge
-//   rather than top/bottom.
-// 5 players: top 4 seats (2x2) face sideways like the 4-player case; the
-//   5th seat spans the full bottom row, upright. Row heights are chosen so
-//   every seat's area is equal (top rows carry 2 seats each, bottom row is
-//   the width of both columns, so top rows get 2x the height of the bottom
-//   row to balance area).
 
 type Cell = { row: string; col: string; rotation: 0 | 90 | 180 | 270 };
 
