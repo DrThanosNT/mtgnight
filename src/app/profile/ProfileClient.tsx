@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -16,7 +16,13 @@ const FORMAT_OPTIONS = [
   { key: "BRAWL", label: "Brawl" },
 ];
 
-type Deck = { id: string; name: string; format: string };
+type Deck = {
+  id: string;
+  name: string;
+  format: string;
+  backgroundImageUrl?: string | null;
+  backgroundCardName?: string | null;
+};
 type Option = { id: string; name: string };
 type StatsResult = {
   gamesPlayed: number;
@@ -188,14 +194,22 @@ export default function ProfileClient({ displayName, email }: { displayName: str
 
       <section style={{ marginBottom: 32 }}>
         <h2 style={sectionHeading}>My decks</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
           {decks.map((d) => (
-            <div key={d.id} style={deckRow}>
-              <span>{d.name}</span>
-              <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <span style={{ fontSize: 12, opacity: 0.6 }}>{d.format}</span>
-                <button onClick={() => handleDeleteDeck(d.id)} style={tinyDangerBtn}>Remove</button>
-              </span>
+            <div key={d.id} style={{ ...deckRow, flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>{d.name}</span>
+                <span style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <span style={{ fontSize: 12, opacity: 0.6 }}>{d.format}</span>
+                  <button onClick={() => handleDeleteDeck(d.id)} style={tinyDangerBtn}>Remove</button>
+                </span>
+              </div>
+              <BackgroundPicker
+                deck={d}
+                onUpdated={(id, backgroundImageUrl, backgroundCardName) =>
+                  setDecks((prev) => prev.map((x) => (x.id === id ? { ...x, backgroundImageUrl, backgroundCardName } : x)))
+                }
+              />
             </div>
           ))}
           {decks.length === 0 && <p style={{ opacity: 0.6, fontSize: 14 }}>No decks yet.</p>}
@@ -224,6 +238,94 @@ export default function ProfileClient({ displayName, email }: { displayName: str
       </section>
 
       <button onClick={handleLogout} style={dangerBtn}>Log out</button>
+    </div>
+  );
+}
+
+function BackgroundPicker({
+  deck,
+  onUpdated,
+}: {
+  deck: { id: string; backgroundImageUrl?: string | null; backgroundCardName?: string | null };
+  onUpdated: (id: string, backgroundImageUrl: string | null, backgroundCardName: string | null) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<{ name: string; imageUrl: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(value)}`);
+      if (res.ok) setResults((await res.json()).results);
+    }, 350);
+  }
+
+  async function selectCard(name: string, imageUrl: string) {
+    await fetch(`/api/decks/${deck.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backgroundImageUrl: imageUrl, backgroundCardName: name }),
+    });
+    onUpdated(deck.id, imageUrl, name);
+    setOpen(false);
+    setQuery("");
+    setResults([]);
+  }
+
+  async function clearBackground() {
+    await fetch(`/api/decks/${deck.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backgroundImageUrl: null, backgroundCardName: null }),
+    });
+    onUpdated(deck.id, null, null);
+  }
+
+  return (
+    <div style={{ position: "relative", marginTop: 4 }}>
+      {deck.backgroundImageUrl ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 12, opacity: 0.7 }}>Background: {deck.backgroundCardName}</span>
+          <button onClick={clearBackground} style={tinyDangerBtn}>Clear</button>
+        </div>
+      ) : (
+        <button onClick={() => setOpen((o) => !o)} style={{ ...tinyDangerBtn, color: "#8fbf9f" }}>
+          Set background art…
+        </button>
+      )}
+
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          <input
+            placeholder="Search MTG cards…"
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
+          />
+          {results.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {results.map((r) => (
+                <button
+                  key={r.name}
+                  onClick={() => selectCard(r.name, r.imageUrl)}
+                  style={{
+                    border: "none", padding: 0, cursor: "pointer", borderRadius: 8, overflow: "hidden",
+                    width: 72, height: 72, backgroundImage: `url(${r.imageUrl})`, backgroundSize: "cover", backgroundPosition: "center",
+                  }}
+                  title={r.name}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

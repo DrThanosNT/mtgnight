@@ -11,7 +11,7 @@ const PALETTE = [
 ];
 
 type Member = { userId: string; displayName: string };
-type Deck = { id: string; name: string };
+type Deck = { id: string; name: string; backgroundImageUrl?: string | null };
 
 export default function GroupGameSetupPage() {
   const { id: groupId } = useParams<{ id: string }>();
@@ -63,9 +63,6 @@ export default function GroupGameSetupPage() {
   if (loading) return <p style={{ color: "white", padding: 24 }}>Loading…</p>;
   if (error || !group) return <p style={{ color: "white", padding: 24 }}>{error ?? "Group not found."}</p>;
 
-  // A member is "ready" if they either picked a deck, or genuinely have no
-  // decks to pick from at all - in that case the game just proceeds without
-  // a deck attached for them.
   const everyoneHasADeck = members.every(
     (m) => decksByMember[m.userId]?.length === 0 || Boolean(selectedDeck[m.userId])
   );
@@ -79,6 +76,8 @@ export default function GroupGameSetupPage() {
           id: m.userId,
           name: m.displayName,
           deckId: selectedDeck[m.userId],
+          backgroundImageUrl:
+            decksByMember[m.userId]?.find((d) => d.id === selectedDeck[m.userId])?.backgroundImageUrl ?? null,
           color: PALETTE[i % PALETTE.length],
         }))}
         onGameEnd={(result) => {

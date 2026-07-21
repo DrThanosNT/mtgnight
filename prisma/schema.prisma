@@ -93,7 +93,7 @@ model GroupMember {
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   role     String    @default("member")
   joinedAt DateTime  @default(now())
-  leftAt   DateTime? // null = still active; set = left, history stays intact
+  leftAt   DateTime?
 
   @@unique([groupId, userId])
 }
@@ -112,12 +112,14 @@ model GroupInvite {
 }
 
 model Deck {
-  id        String   @id @default(cuid())
-  ownerId   String
-  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name      String
-  format    Format
-  createdAt DateTime @default(now())
+  id                 String   @id @default(cuid())
+  ownerId            String
+  owner              User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name               String
+  format             Format
+  backgroundImageUrl String?
+  backgroundCardName String?
+  createdAt          DateTime @default(now())
 
   gamePlayers GamePlayer[]
 

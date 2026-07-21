@@ -22,7 +22,7 @@ export async function GET(
 
   const decks = await prisma.deck.findMany({
     where: { ownerId: userId, format: group.format },
-    select: { id: true, name: true },
+    select: { id: true, name: true, backgroundImageUrl: true },
     orderBy: { name: "asc" },
   });
 

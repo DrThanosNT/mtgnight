@@ -22,6 +22,7 @@ type SeatPlayer = {
   id: string;
   name: string;
   deckId?: string;
+  backgroundImageUrl?: string | null;
   color: string;
 };
 
@@ -394,17 +395,9 @@ function RotatableBlock({ rotation, children }: { rotation: 0 | 90 | 180 | 270; 
 }
 
 // ---------- Tap-vs-hold life button ----------
-// Tap = ±1, released before 2s. Hold past 2s = ±10 immediately, then ±10
-// again every 2s for as long as it's held.
-//
-// activeRef guards against double-firing: on touchscreens, lifting a
-// finger off the button fires BOTH pointerup and pointerleave in quick
-// succession (the touch point "leaves" the element as it disappears).
-// Without this guard, end() ran twice per tap, firing the ±1 change
-// twice - this is what caused every tap to move life by 2 instead of 1.
 
-const HOLD_THRESHOLD_MS = 2000;
-const HOLD_REPEAT_MS = 2000;
+const HOLD_THRESHOLD_MS = 1000;
+const HOLD_REPEAT_MS = 1000;
 
 function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) => void }) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -459,16 +452,6 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
 }
 
 // ---------- Player block content ----------
-// Layout: name pinned top (bigger now), life number centered with a
-// running change indicator, +/- pinned to the left/right edges, counters
-// pinned bottom.
-//
-// The centered life-number wrapper below has pointerEvents: "none" - it
-// used to sit on top of the minus button in paint order (later siblings
-// in the DOM paint over earlier ones), silently swallowing every click
-// aimed at the minus button. Since this wrapper has no interactive
-// content of its own, disabling its pointer events lets clicks pass
-// straight through to whatever's actually underneath it.
 
 function PlayerBlockContent({
   player,
@@ -507,13 +490,18 @@ function PlayerBlockContent({
   return (
     <div
       style={{
-        position: "relative", width: "100%", height: "100%", background: player.color,
+        position: "relative", width: "100%", height: "100%",
+        background: player.backgroundImageUrl
+          ? `linear-gradient(rgba(0,0,0,0.25), rgba(0,0,0,0.25)), url(${player.backgroundImageUrl})`
+          : player.color,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
         borderRadius: 22, outline: isActiveTurn ? `3px solid ${colors.gold}` : "none", color: "white",
         userSelect: "none", overflow: "hidden", boxSizing: "border-box",
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
-      {/* Name - top, bigger */}
+      {/* Name - top */}
       <div
         style={{
           position: "absolute", top: 6, left: 0, right: 0, textAlign: "center",
@@ -528,8 +516,7 @@ function PlayerBlockContent({
         <LifeButton sign={-1} onChange={handleLifeChange} />
       </div>
 
-      {/* Life number - centered, with running delta badge. pointerEvents:
-          none so it never blocks the buttons on either side of it. */}
+      {/* Life number - centered, with running delta badge */}
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <span style={{ fontSize: "clamp(30px, 13vmin, 64px)", fontWeight: 700 }}>{player.life}</span>
@@ -553,7 +540,7 @@ function PlayerBlockContent({
         <LifeButton sign={1} onChange={handleLifeChange} />
       </div>
 
-      {/* Counters - pinned bottom, with side padding so it never sits under the +/- buttons */}
+      {/* Counters - pinned bottom */}
       <div
         style={{
           position: "absolute", bottom: 4, left: 0, right: 0,
