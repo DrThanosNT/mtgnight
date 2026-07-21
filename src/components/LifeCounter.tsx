@@ -181,68 +181,36 @@ export default function LifeCounterGame(props: {
   }
 
   function confirmWinner(winnerId: string | null) {
-    if (mode === "group" && onGameEnd) {
-      onGameEnd({
-        turnCount,
-        players: players.map((p) => ({
-          userId: p.id,
-          deckId: p.deckId,
-          seatOrder: turnOrder.indexOf(p.id),
-          finalLife: p.life,
-          isWinner: p.id === winnerId,
-        })),
-      });
-    }
-
-    setPhase("setup");
-    setFirstPlayerIndex(null);
-    setRolling(false);
-    setRollingHighlight(null);
-    setPlayers([]);
-    setActiveTurnIdx(0);
-    setTurnCount(1);
-
-    if (onExit) onExit();
+  if (mode === "group" && onGameEnd) {
+    onGameEnd({
+      turnCount,
+      players: players.map((p) => ({
+        userId: p.id,
+        deckId: p.deckId,
+        seatOrder: turnOrder.indexOf(p.id),
+        finalLife: p.life,
+        isWinner: p.id === winnerId,
+      })),
+    });
   }
 
-  // ---------- Render: setup ----------
-
-  if (phase === "setup") {
-    return (
-      <div style={centeredPhaseStyle}>
-        <div style={{ maxWidth: 480, margin: "0 auto", width: "100%" }}>
-          <h2 style={headingStyle}>Arrange seating order</h2>
-          <p style={subtextStyle}>Drag to match how you're actually sitting around the table (clockwise).</p>
-          <div style={styles.seatList}>
-            {seating.map((p, i) => (
-              <div
-                key={p.id}
-                draggable
-                onDragStart={() => onDragStart(i)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => onDrop(i)}
-                style={{ ...styles.seatRow, background: p.color }}
-              >
-                <span style={styles.dragHandle}>⠿</span>
-                {mode === "casual" ? (
-                  <input value={p.name} onChange={(e) => renamePlayer(p.id, e.target.value)} style={styles.nameInput} />
-                ) : (
-                  <span style={styles.nameText}>{p.name}</span>
-                )}
-                <div style={styles.moveButtons}>
-                  <button onClick={() => movePlayer(i, -1)} style={styles.smallBtn}>↑</button>
-                  <button onClick={() => movePlayer(i, 1)} style={styles.smallBtn}>↓</button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button style={{ ...primaryBtnStyle, width: "100%", marginTop: 20 }} onClick={proceedToFirstPlayer}>
-            Continue
-          </button>
-        </div>
-      </div>
-    );
+  if (onExit) {
+    // Navigating away - the component is about to unmount, so there's no
+    // point resetting local state first (that's what caused the brief
+    // flash of the "arrange seating" screen before the page actually changed).
+    onExit();
+    return;
   }
+
+  // No onExit provided - nowhere to navigate to, so reset in place
+  setPhase("setup");
+  setFirstPlayerIndex(null);
+  setRolling(false);
+  setRollingHighlight(null);
+  setPlayers([]);
+  setActiveTurnIdx(0);
+  setTurnCount(1);
+}
 
   // ---------- Render: first player selection ----------
 

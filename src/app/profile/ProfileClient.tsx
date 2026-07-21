@@ -150,23 +150,27 @@ export default function ProfileClient({ displayName, email }: { displayName: str
           ))}
           {decks.length === 0 && <p style={{ opacity: 0.6, fontSize: 14 }}>No decks yet.</p>}
         </div>
-        <form onSubmit={handleAddDeck} style={{ display: "flex", gap: 8 }}>
-          <input
-            placeholder="Deck name"
-            value={deckName}
-            onChange={(e) => setDeckName(e.target.value)}
-            required
-            style={{ ...selectStyle, flex: 1 }}
-          />
-          <select value={deckFormat} onChange={(e) => setDeckFormat(e.target.value)} style={selectStyle}>
-            {FORMAT_OPTIONS.map((f) => (
-              <option key={f.key} value={f.key}>{f.label}</option>
-            ))}
-          </select>
-          <button type="submit" disabled={addingDeck} style={ghostBtn}>
-            {addingDeck ? "Adding…" : "Add"}
-          </button>
-        </form>
+        <form onSubmit={handleAddDeck} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+  <input
+    placeholder="Deck name"
+    value={deckName}
+    onChange={(e) => setDeckName(e.target.value)}
+    required
+    style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
+  />
+  <select
+    value={deckFormat}
+    onChange={(e) => setDeckFormat(e.target.value)}
+    style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
+  >
+    {FORMAT_OPTIONS.map((f) => (
+      <option key={f.key} value={f.key}>{f.label}</option>
+    ))}
+  </select>
+  <button type="submit" disabled={addingDeck} style={{ ...ghostBtn, width: "100%" }}>
+    {addingDeck ? "Adding…" : "Add deck"}
+  </button>
+</form>
       </section>
 
       <button onClick={handleLogout} style={dangerBtn}>Log out</button>

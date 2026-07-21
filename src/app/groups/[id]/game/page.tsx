@@ -63,9 +63,7 @@ export default function GroupGameSetupPage() {
   if (loading) return <p style={{ color: "white", padding: 24 }}>Loading…</p>;
   if (error || !group) return <p style={{ color: "white", padding: 24 }}>{error ?? "Group not found."}</p>;
 
-  const everyoneHasADeck = members.every(
-    (m) => decksByMember[m.userId]?.length === 0 || selectedDeck[m.userId]
-  );
+  const everyoneHasADeck = members.every((m) => Boolean(selectedDeck[m.userId]));
 
   if (ready) {
     return (
