@@ -577,11 +577,23 @@ function PlayerBlockContent({
     deltaTimeoutRef.current = setTimeout(() => setDelta(null), 4000);
   }
 
+  // Commander damage now also affects life directly, matching the real
+  // rule (taking N commander damage is N life lost). Routed through the
+  // same handleLifeChange used by the +/- buttons so it also shows up in
+  // the running delta badge, then separately records the damage count
+  // itself via onCommanderDamageChange.
+  function handleCommanderDamageChange(fromId: string, cdDelta: number) {
+    onCommanderDamageChange(fromId, cdDelta);
+    handleLifeChange(-cdDelta);
+  }
+
   useEffect(() => {
     return () => {
       if (deltaTimeoutRef.current) clearTimeout(deltaTimeoutRef.current);
     };
   }, []);
+
+  const panelOpen = panel !== "none";
 
   return (
     <div
@@ -597,116 +609,122 @@ function PlayerBlockContent({
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
-      <div
-        style={{
-          position: "absolute", top: 6, left: "50%", transform: "translateX(-50%)",
-          pointerEvents: "none",
-        }}
-      >
-        <span
-          style={{
-            display: "inline-block",
-            background: "rgba(0,0,0,0.45)",
-            padding: "3px 10px",
-            borderRadius: 10,
-            fontWeight: 700,
-            fontSize: "clamp(14px, 4.2vmin, 20px)",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {player.name}
-        </span>
-      </div>
-
-      <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
-        <LifeButton sign={-1} onChange={handleLifeChange} />
-      </div>
-
-      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Whole card laid out as a column: name, toggle buttons, then a
+          flexible content area that's either the life display or the
+          open panel - swapping between them frees the panel to use the
+          full remaining height instead of being squeezed to the bottom. */}
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
+        <div style={{ textAlign: "center", padding: "6px 8px 0", pointerEvents: "none", flexShrink: 0 }}>
           <span
             style={{
-              fontSize: "clamp(30px, 13vmin, 64px)",
+              display: "inline-block",
+              background: "rgba(0,0,0,0.45)",
+              padding: "3px 10px",
+              borderRadius: 10,
               fontWeight: 700,
-              textShadow: "0 2px 6px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4)",
+              fontSize: "clamp(14px, 4.2vmin, 20px)",
+              whiteSpace: "nowrap",
             }}
           >
-            {player.life}
+            {player.name}
           </span>
-          {delta !== null && (
-            <span
-              style={{
-                position: "absolute", top: "-1.4em", right: "-1.6em",
-                fontSize: "clamp(11px, 3vmin, 15px)", fontWeight: 700,
-                color: delta >= 0 ? "#8fd18f" : "#e08080",
-                background: "rgba(0,0,0,0.45)", padding: "2px 6px", borderRadius: 8,
-              }}
-            >
-              {delta > 0 ? `+${delta}` : delta}
-            </span>
-          )}
         </div>
-      </div>
 
-      <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
-        <LifeButton sign={1} onChange={handleLifeChange} />
-      </div>
-
-      <div
-        style={{
-          position: "absolute", bottom: 4, left: 0, right: 0,
-          paddingLeft: "clamp(36px, 12vmin, 52px)", paddingRight: "clamp(36px, 12vmin, 52px)",
-          boxSizing: "border-box", display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-        }}
-      >
-        <div style={{ display: "flex", gap: 4 }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 4, flexShrink: 0 }}>
           <button style={styles.tinyBtn} onClick={() => setPanel(panel === "counters" ? "none" : "counters")}>
             {panel === "counters" ? "Hide" : "Counters"}
           </button>
           <button style={styles.tinyBtn} onClick={() => setPanel(panel === "commanderDamage" ? "none" : "commanderDamage")}>
-            Cmdr Dmg
+            {panel === "commanderDamage" ? "Hide" : "Cmdr Dmg"}
           </button>
         </div>
 
-        {panel === "counters" && (
-          <div style={{ ...styles.counterGrid, maxHeight: "34vh", overflowY: "auto", width: "100%" }}>
-            {COUNTER_TYPES.map((type) => (
-              <div key={type} style={styles.counterRow}>
-                <span style={{ ...styles.counterBadge, background: COUNTER_META[type].badgeColor }}>
-                  {COUNTER_META[type].tag}
+        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+          {!panelOpen && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+              <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span
+                  style={{
+                    fontSize: "clamp(30px, 13vmin, 64px)",
+                    fontWeight: 700,
+                    textShadow: "0 2px 6px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  {player.life}
                 </span>
-                <button style={styles.tinyBtn} onClick={() => onCounterChange(type, -1)}>-</button>
-                <span style={{ minWidth: 16, textAlign: "center" }}>{player.counters[type]}</span>
-                <button style={styles.tinyBtn} onClick={() => onCounterChange(type, 1)}>+</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {panel === "commanderDamage" && (
-          <div style={{ ...styles.counterGrid, gridTemplateColumns: "1fr", maxHeight: "34vh", overflowY: "auto", width: "100%" }}>
-            {opponents.map((opp) => {
-              const dmg = player.commanderDamageTaken[opp.id] ?? 0;
-              const lethal = dmg >= 21;
-              return (
-                <div key={opp.id} style={styles.counterRow}>
+                {delta !== null && (
                   <span
                     style={{
-                      ...styles.counterBadge, background: opp.color,
-                      outline: lethal ? "2px solid #ff5050" : "none",
+                      position: "absolute", top: "-1.4em", right: "-1.6em",
+                      fontSize: "clamp(11px, 3vmin, 15px)", fontWeight: 700,
+                      color: delta >= 0 ? "#8fd18f" : "#e08080",
+                      background: "rgba(0,0,0,0.45)", padding: "2px 6px", borderRadius: 8,
                     }}
                   >
-                    {opp.name.slice(0, 3)}
+                    {delta > 0 ? `+${delta}` : delta}
                   </span>
-                  <button style={styles.tinyBtn} onClick={() => onCommanderDamageChange(opp.id, -1)}>-</button>
-                  <span style={{ minWidth: 16, textAlign: "center", color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
-                  <button style={styles.tinyBtn} onClick={() => onCommanderDamageChange(opp.id, 1)}>+</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                )}
+              </div>
+            </div>
+          )}
+
+          {panel === "counters" && (
+            <div style={{ position: "absolute", inset: "0 8px 8px 8px", overflowY: "auto" }}>
+              <div style={styles.counterGrid}>
+                {COUNTER_TYPES.map((type) => (
+                  <div key={type} style={styles.counterRow}>
+                    <span style={{ ...styles.counterBadge, background: COUNTER_META[type].badgeColor }}>
+                      {COUNTER_META[type].tag}
+                    </span>
+                    <button style={styles.tinyBtn} onClick={() => onCounterChange(type, -1)}>-</button>
+                    <span style={{ minWidth: 16, textAlign: "center" }}>{player.counters[type]}</span>
+                    <button style={styles.tinyBtn} onClick={() => onCounterChange(type, 1)}>+</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {panel === "commanderDamage" && (
+            <div style={{ position: "absolute", inset: "0 8px 8px 8px", overflowY: "auto" }}>
+              <div style={{ ...styles.counterGrid, gridTemplateColumns: "1fr" }}>
+                {opponents.map((opp) => {
+                  const dmg = player.commanderDamageTaken[opp.id] ?? 0;
+                  const lethal = dmg >= 21;
+                  return (
+                    <div key={opp.id} style={styles.counterRow}>
+                      <span
+                        style={{
+                          ...styles.counterBadge, background: opp.color,
+                          outline: lethal ? "2px solid #ff5050" : "none",
+                        }}
+                      >
+                        {opp.name.slice(0, 3)}
+                      </span>
+                      <button style={styles.tinyBtn} onClick={() => handleCommanderDamageChange(opp.id, -1)}>-</button>
+                      <span style={{ minWidth: 16, textAlign: "center", color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
+                      <button style={styles.tinyBtn} onClick={() => handleCommanderDamageChange(opp.id, 1)}>+</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* +/- life buttons pinned to the card's edges, independent of the
+          column layout above - only shown while no panel is open. */}
+      {!panelOpen && (
+        <>
+          <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+            <LifeButton sign={-1} onChange={handleLifeChange} />
+          </div>
+          <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+            <LifeButton sign={1} onChange={handleLifeChange} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -818,7 +836,7 @@ const styles: Record<string, React.CSSProperties> = {
   smallBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer" },
   tinyBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 6, padding: "2px 6px", fontSize: 12, cursor: "pointer" },
   topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", color: "white", padding: "4px 8px", marginBottom: 8, flexShrink: 0 },
-  counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginTop: 2, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 6 },
+  counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 6 },
   counterRow: { display: "flex", alignItems: "center", gap: 4, fontSize: 12 },
   counterBadge: { fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 6, minWidth: 26, textAlign: "center" },
 };
