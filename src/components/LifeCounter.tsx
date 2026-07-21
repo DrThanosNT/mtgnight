@@ -577,11 +577,6 @@ function PlayerBlockContent({
     deltaTimeoutRef.current = setTimeout(() => setDelta(null), 4000);
   }
 
-  // Commander damage now also affects life directly, matching the real
-  // rule (taking N commander damage is N life lost). Routed through the
-  // same handleLifeChange used by the +/- buttons so it also shows up in
-  // the running delta badge, then separately records the damage count
-  // itself via onCommanderDamageChange.
   function handleCommanderDamageChange(fromId: string, cdDelta: number) {
     onCommanderDamageChange(fromId, cdDelta);
     handleLifeChange(-cdDelta);
@@ -609,10 +604,6 @@ function PlayerBlockContent({
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
-      {/* Whole card laid out as a column: name, toggle buttons, then a
-          flexible content area that's either the life display or the
-          open panel - swapping between them frees the panel to use the
-          full remaining height instead of being squeezed to the bottom. */}
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ textAlign: "center", padding: "6px 8px 0", pointerEvents: "none", flexShrink: 0 }}>
           <span
@@ -630,7 +621,7 @@ function PlayerBlockContent({
           </span>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 4, marginTop: 4, flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 6, flexShrink: 0 }}>
           <button style={styles.tinyBtn} onClick={() => setPanel(panel === "counters" ? "none" : "counters")}>
             {panel === "counters" ? "Hide" : "Counters"}
           </button>
@@ -676,9 +667,9 @@ function PlayerBlockContent({
                     <span style={{ ...styles.counterBadge, background: COUNTER_META[type].badgeColor }}>
                       {COUNTER_META[type].tag}
                     </span>
-                    <button style={styles.tinyBtn} onClick={() => onCounterChange(type, -1)}>-</button>
-                    <span style={{ minWidth: 16, textAlign: "center" }}>{player.counters[type]}</span>
-                    <button style={styles.tinyBtn} onClick={() => onCounterChange(type, 1)}>+</button>
+                    <button style={styles.counterBtn} onClick={() => onCounterChange(type, -1)}>-</button>
+                    <span style={styles.counterValue}>{player.counters[type]}</span>
+                    <button style={styles.counterBtn} onClick={() => onCounterChange(type, 1)}>+</button>
                   </div>
                 ))}
               </div>
@@ -701,9 +692,9 @@ function PlayerBlockContent({
                       >
                         {opp.name.slice(0, 3)}
                       </span>
-                      <button style={styles.tinyBtn} onClick={() => handleCommanderDamageChange(opp.id, -1)}>-</button>
-                      <span style={{ minWidth: 16, textAlign: "center", color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
-                      <button style={styles.tinyBtn} onClick={() => handleCommanderDamageChange(opp.id, 1)}>+</button>
+                      <button style={styles.counterBtn} onClick={() => handleCommanderDamageChange(opp.id, -1)}>-</button>
+                      <span style={{ ...styles.counterValue, color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
+                      <button style={styles.counterBtn} onClick={() => handleCommanderDamageChange(opp.id, 1)}>+</button>
                     </div>
                   );
                 })}
@@ -713,8 +704,6 @@ function PlayerBlockContent({
         </div>
       </div>
 
-      {/* +/- life buttons pinned to the card's edges, independent of the
-          column layout above - only shown while no panel is open. */}
       {!panelOpen && (
         <>
           <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
@@ -811,9 +800,9 @@ const subtextStyle: React.CSSProperties = {
 // ---------- Styles ----------
 
 const lifeButtonStyle: React.CSSProperties = {
-  width: "clamp(30px, 9vmin, 40px)", height: "clamp(30px, 9vmin, 40px)", borderRadius: "50%",
-  border: "none", fontSize: "clamp(15px, 4.5vmin, 22px)", background: "rgba(0,0,0,0.35)",
-  color: "white", cursor: "pointer", flexShrink: 0,
+  width: "clamp(40px, 12vmin, 56px)", height: "clamp(40px, 12vmin, 56px)", borderRadius: "50%",
+  border: "none", fontSize: "clamp(20px, 6.5vmin, 30px)", background: "rgba(0,0,0,0.4)",
+  color: "white", cursor: "pointer", flexShrink: 0, fontWeight: 700,
 };
 
 const styles: Record<string, React.CSSProperties> = {
@@ -834,9 +823,13 @@ const styles: Record<string, React.CSSProperties> = {
   },
   moveButtons: { display: "flex", gap: 4, flexShrink: 0 },
   smallBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer" },
-  tinyBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 6, padding: "2px 6px", fontSize: 12, cursor: "pointer" },
+  // Toggle buttons ("Counters" / "Cmdr Dmg") - bumped up from the old tiny size
+  tinyBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: "clamp(12px, 3.2vmin, 15px)", fontWeight: 600, cursor: "pointer" },
   topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", color: "white", padding: "4px 8px", marginBottom: 8, flexShrink: 0 },
-  counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 6 },
-  counterRow: { display: "flex", alignItems: "center", gap: 4, fontSize: 12 },
-  counterBadge: { fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 6, minWidth: 26, textAlign: "center" },
+  counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 10 },
+  counterRow: { display: "flex", alignItems: "center", gap: 6, fontSize: "clamp(12px, 3.2vmin, 15px)" },
+  counterBadge: { fontSize: "clamp(10px, 2.6vmin, 12px)", fontWeight: 700, padding: "4px 8px", borderRadius: 8, minWidth: 34, textAlign: "center" },
+  // +/- inside counter/cmdr-dmg rows - larger tap targets than before
+  counterBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, width: "clamp(26px, 7vmin, 34px)", height: "clamp(26px, 7vmin, 34px)", fontSize: "clamp(14px, 3.8vmin, 18px)", fontWeight: 700, cursor: "pointer", flexShrink: 0 },
+  counterValue: { minWidth: 22, textAlign: "center", fontSize: "clamp(13px, 3.4vmin, 16px)", fontWeight: 700 },
 };
