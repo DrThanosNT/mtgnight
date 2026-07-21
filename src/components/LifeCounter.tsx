@@ -181,36 +181,71 @@ export default function LifeCounterGame(props: {
   }
 
   function confirmWinner(winnerId: string | null) {
-  if (mode === "group" && onGameEnd) {
-    onGameEnd({
-      turnCount,
-      players: players.map((p) => ({
-        userId: p.id,
-        deckId: p.deckId,
-        seatOrder: turnOrder.indexOf(p.id),
-        finalLife: p.life,
-        isWinner: p.id === winnerId,
-      })),
-    });
+    if (mode === "group" && onGameEnd) {
+      onGameEnd({
+        turnCount,
+        players: players.map((p) => ({
+          userId: p.id,
+          deckId: p.deckId,
+          seatOrder: turnOrder.indexOf(p.id),
+          finalLife: p.life,
+          isWinner: p.id === winnerId,
+        })),
+      });
+    }
+
+    if (onExit) {
+      onExit();
+      return;
+    }
+
+    setPhase("setup");
+    setFirstPlayerIndex(null);
+    setRolling(false);
+    setRollingHighlight(null);
+    setPlayers([]);
+    setActiveTurnIdx(0);
+    setTurnCount(1);
   }
 
-  if (onExit) {
-    // Navigating away - the component is about to unmount, so there's no
-    // point resetting local state first (that's what caused the brief
-    // flash of the "arrange seating" screen before the page actually changed).
-    onExit();
-    return;
-  }
+  // ---------- Render: setup ----------
 
-  // No onExit provided - nowhere to navigate to, so reset in place
-  setPhase("setup");
-  setFirstPlayerIndex(null);
-  setRolling(false);
-  setRollingHighlight(null);
-  setPlayers([]);
-  setActiveTurnIdx(0);
-  setTurnCount(1);
-}
+  if (phase === "setup") {
+    return (
+      <div style={centeredPhaseStyle}>
+        <div style={{ maxWidth: 480, margin: "0 auto", width: "100%" }}>
+          <h2 style={headingStyle}>Arrange seating order</h2>
+          <p style={subtextStyle}>Drag to match how you're actually sitting around the table (clockwise).</p>
+          <div style={styles.seatList}>
+            {seating.map((p, i) => (
+              <div
+                key={p.id}
+                draggable
+                onDragStart={() => onDragStart(i)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => onDrop(i)}
+                style={{ ...styles.seatRow, background: p.color }}
+              >
+                <span style={styles.dragHandle}>⠿</span>
+                {mode === "casual" ? (
+                  <input value={p.name} onChange={(e) => renamePlayer(p.id, e.target.value)} style={styles.nameInput} />
+                ) : (
+                  <span style={styles.nameText}>{p.name}</span>
+                )}
+                <div style={styles.moveButtons}>
+                  <button onClick={() => movePlayer(i, -1)} style={styles.smallBtn}>↑</button>
+                  <button onClick={() => movePlayer(i, 1)} style={styles.smallBtn}>↓</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button style={{ ...primaryBtnStyle, width: "100%", marginTop: 20 }} onClick={proceedToFirstPlayer}>
+            Continue
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ---------- Render: first player selection ----------
 
@@ -496,15 +531,15 @@ function getLayout(count: number): { cols: string; rows: string; cells: Cell[] }
     case 2:
       return { cols: "1fr", rows: "1fr 1fr", cells: [{ row: "1", col: "1", rotation: 180 }, { row: "2", col: "1", rotation: 0 }] };
     case 3:
-  return {
-    cols: "1fr 1fr",
-    rows: "1fr 2fr", // top (full width) shorter, bottom two (half width) taller — equal area
-    cells: [
-      { row: "1", col: "1 / span 2", rotation: 180 },
-      { row: "2", col: "1", rotation: 0 },
-      { row: "2", col: "2", rotation: 0 },
-    ],
-  };
+      return {
+        cols: "1fr 1fr",
+        rows: "1fr 2fr",
+        cells: [
+          { row: "1", col: "1 / span 2", rotation: 180 },
+          { row: "2", col: "1", rotation: 0 },
+          { row: "2", col: "2", rotation: 0 },
+        ],
+      };
     case 4:
       return {
         cols: "1fr 1fr", rows: "1fr 1fr",
@@ -514,20 +549,20 @@ function getLayout(count: number): { cols: string; rows: string; cells: Cell[] }
         ],
       };
     case 5:
-  return {
-    cols: "1fr 1fr 1fr 1fr",
-    rows: "2fr 4fr 1fr", // balances north (half-width x2), sides (quarter-width x2), south (full-width x1)
-    cells: [
-      { row: "1", col: "1 / span 2", rotation: 180 },
-      { row: "1", col: "3 / span 2", rotation: 180 },
-      { row: "2", col: "1", rotation: 90 },
-      { row: "2", col: "4", rotation: 270 },
-      { row: "3", col: "1 / span 4", rotation: 0 },
-    ],
-  };
+      return {
+        cols: "1fr 1fr 1fr 1fr",
+        rows: "2fr 4fr 1fr",
+        cells: [
+          { row: "1", col: "1 / span 2", rotation: 180 },
+          { row: "1", col: "3 / span 2", rotation: 180 },
+          { row: "2", col: "1", rotation: 90 },
+          { row: "2", col: "4", rotation: 270 },
+          { row: "3", col: "1 / span 4", rotation: 0 },
+        ],
+      };
     case 6:
       return {
-        cols: "1fr 1fr 1fr 1fr", rows: "1fr 1fr 1fr",
+        cols: "1fr 1fr 1fr 1fr", rows: "1fr 2fr 1fr",
         cells: [
           { row: "1", col: "1 / span 2", rotation: 180 }, { row: "1", col: "3 / span 2", rotation: 180 },
           { row: "2", col: "1", rotation: 90 }, { row: "2", col: "4", rotation: 270 },

@@ -33,6 +33,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const membership = await getActiveMembership(groupId, user.id);
   if (!membership) return NextResponse.json({ error: "Not a member of this group" }, { status: 403 });
 
+  const activeMemberCount = await prisma.groupMember.count({ where: { groupId, leftAt: null } });
+  if (activeMemberCount < 2) {
+    return NextResponse.json({ error: "This group needs at least 2 active members to play a game" }, { status: 400 });
+  }
+
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   const { players, turnCount } = parsed.data;

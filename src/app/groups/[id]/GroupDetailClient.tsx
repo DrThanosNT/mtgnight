@@ -74,20 +74,23 @@ export default function GroupDetailClient({
     <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, color: "white" }}>
       <Link href="/dashboard" style={backLink}>← Dashboard</Link>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, marginTop: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700 }}>{group.name}</h1>
-          <p style={{ opacity: 0.6, fontSize: 14 }}>
-            {group.format} · {group.playerCount}-player games
-          </p>
-        </div>
-        <Link href="/profile" style={ghostBtn}>Profile</Link>
+      <div style={{ marginBottom: 24, marginTop: 12 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700 }}>{group.name}</h1>
+        <p style={{ opacity: 0.6, fontSize: 14 }}>
+          {group.format} · {group.playerCount}-player games
+        </p>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 32, flexWrap: "wrap" }}>
-        <Link href={`/groups/${group.id}/game`} style={primaryBtn}>
-          Start a game
-        </Link>
+        {members.length >= 2 ? (
+          <Link href={`/groups/${group.id}/game`} style={primaryBtn}>
+            Start a game
+          </Link>
+        ) : (
+          <span style={{ ...primaryBtn, opacity: 0.5, cursor: "not-allowed" }}>
+            Need 2+ members to play
+          </span>
+        )}
         <Link href={`/groups/${group.id}/stats`} style={ghostBtn}>
           View stats
         </Link>
@@ -107,7 +110,9 @@ export default function GroupDetailClient({
         </div>
 
         <div style={{ marginTop: 16 }}>
-          {!inviteUrl ? (
+          {members.length >= 6 ? (
+            <p style={{ fontSize: 13, opacity: 0.6 }}>Group is full (max 6 members).</p>
+          ) : !inviteUrl ? (
             <button onClick={handleGenerateInvite} style={ghostBtn}>
               Generate invite link
             </button>

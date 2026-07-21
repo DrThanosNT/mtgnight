@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
+const MAX_GROUP_MEMBERS = 6;
+
 export async function POST(_req: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
   const user = await getCurrentUser();
@@ -14,6 +16,20 @@ export async function POST(_req: Request, { params }: { params: Promise<{ code: 
   }
   if (invite.maxUses && invite.useCount >= invite.maxUses) {
     return NextResponse.json({ error: "Invite has reached its use limit" }, { status: 410 });
+  }
+
+  const existingMembership = await prisma.groupMember.findUnique({
+    where: { groupId_userId: { groupId: invite.groupId, userId: user.id } },
+  });
+  const isNewOrRejoining = !existingMembership || existingMembership.leftAt !== null;
+
+  if (isNewOrRejoining) {
+    const activeMemberCount = await prisma.groupMember.count({
+      where: { groupId: invite.groupId, leftAt: null },
+    });
+    if (activeMemberCount >= MAX_GROUP_MEMBERS) {
+      return NextResponse.json({ error: `This group is full (max ${MAX_GROUP_MEMBERS} members)` }, { status: 400 });
+    }
   }
 
   await prisma.$transaction([
