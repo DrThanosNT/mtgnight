@@ -78,6 +78,10 @@ export default function LifeCounterGame(props: {
     setSeating((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
   }
 
+  function setPlayerBackground(id: string, backgroundImageUrl: string | null) {
+    setSeating((prev) => prev.map((p) => (p.id === id ? { ...p, backgroundImageUrl } : p)));
+  }
+
   function movePlayer(index: number, dir: -1 | 1) {
     setSeating((prev) => {
       const next = [...prev];
@@ -231,18 +235,26 @@ export default function LifeCounterGame(props: {
                 onDragStart={() => onDragStart(i)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => onDrop(i)}
-                style={{ ...styles.seatRow, background: p.color }}
+                style={{ ...styles.seatRow, background: p.color, flexDirection: "column", alignItems: "stretch" }}
               >
-                <span style={styles.dragHandle}>⠿</span>
-                {mode === "casual" ? (
-                  <input value={p.name} onChange={(e) => renamePlayer(p.id, e.target.value)} style={styles.nameInput} />
-                ) : (
-                  <span style={styles.nameText}>{p.name}</span>
-                )}
-                <div style={styles.moveButtons}>
-                  <button onClick={() => movePlayer(i, -1)} style={styles.smallBtn}>↑</button>
-                  <button onClick={() => movePlayer(i, 1)} style={styles.smallBtn}>↓</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={styles.dragHandle}>⠿</span>
+                  {mode === "casual" ? (
+                    <input value={p.name} onChange={(e) => renamePlayer(p.id, e.target.value)} style={styles.nameInput} />
+                  ) : (
+                    <span style={styles.nameText}>{p.name}</span>
+                  )}
+                  <div style={styles.moveButtons}>
+                    <button onClick={() => movePlayer(i, -1)} style={styles.smallBtn}>↑</button>
+                    <button onClick={() => movePlayer(i, 1)} style={styles.smallBtn}>↓</button>
+                  </div>
                 </div>
+                {mode === "casual" && (
+                  <SeatBackgroundPicker
+                    backgroundImageUrl={p.backgroundImageUrl ?? null}
+                    onChange={(url) => setPlayerBackground(p.id, url)}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -353,6 +365,90 @@ export default function LifeCounterGame(props: {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---------- Casual-mode inline background picker (seating screen) ----------
+
+function SeatBackgroundPicker({
+  backgroundImageUrl,
+  onChange,
+}: {
+  backgroundImageUrl: string | null;
+  onChange: (url: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<{ name: string; imageUrl: string }[]>([]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (value.trim().length < 2) {
+      setResults([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      const res = await fetch(`/api/cards/search?q=${encodeURIComponent(value)}`);
+      if (res.ok) setResults((await res.json()).results);
+    }, 350);
+  }
+
+  function select(url: string) {
+    onChange(url);
+    setOpen(false);
+    setQuery("");
+    setResults([]);
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      {backgroundImageUrl ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            style={{
+              width: 28, height: 28, borderRadius: 6, backgroundImage: `url(${backgroundImageUrl})`,
+              backgroundSize: "cover", backgroundPosition: "center", flexShrink: 0,
+            }}
+          />
+          <button onClick={() => onChange(null)} style={styles.tinyBtn}>Clear background</button>
+        </div>
+      ) : (
+        <button onClick={() => setOpen((o) => !o)} style={styles.tinyBtn}>
+          Set background art…
+        </button>
+      )}
+
+      {open && (
+        <div style={{ marginTop: 6 }}>
+          <input
+            placeholder="Search MTG cards…"
+            value={query}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            style={{
+              width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 6,
+              border: "none", background: "rgba(0,0,0,0.3)", color: "white", fontSize: 13,
+            }}
+          />
+          {results.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {results.map((r) => (
+                <button
+                  key={r.name}
+                  onClick={() => select(r.imageUrl)}
+                  style={{
+                    border: "none", padding: 0, cursor: "pointer", borderRadius: 8, overflow: "hidden",
+                    width: 56, height: 56, backgroundImage: `url(${r.imageUrl})`, backgroundSize: "cover", backgroundPosition: "center",
+                  }}
+                  title={r.name}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -501,25 +597,42 @@ function PlayerBlockContent({
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
-      {/* Name - top */}
       <div
         style={{
-          position: "absolute", top: 6, left: 0, right: 0, textAlign: "center",
-          fontWeight: 700, fontSize: "clamp(14px, 4.2vmin, 20px)", pointerEvents: "none",
+          position: "absolute", top: 6, left: "50%", transform: "translateX(-50%)",
+          pointerEvents: "none",
         }}
       >
-        {player.name}
+        <span
+          style={{
+            display: "inline-block",
+            background: "rgba(0,0,0,0.45)",
+            padding: "3px 10px",
+            borderRadius: 10,
+            fontWeight: 700,
+            fontSize: "clamp(14px, 4.2vmin, 20px)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {player.name}
+        </span>
       </div>
 
-      {/* Minus - pinned left edge, vertically centered */}
       <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
         <LifeButton sign={-1} onChange={handleLifeChange} />
       </div>
 
-      {/* Life number - centered, with running delta badge */}
       <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: "clamp(30px, 13vmin, 64px)", fontWeight: 700 }}>{player.life}</span>
+          <span
+            style={{
+              fontSize: "clamp(30px, 13vmin, 64px)",
+              fontWeight: 700,
+              textShadow: "0 2px 6px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4)",
+            }}
+          >
+            {player.life}
+          </span>
           {delta !== null && (
             <span
               style={{
@@ -535,12 +648,10 @@ function PlayerBlockContent({
         </div>
       </div>
 
-      {/* Plus - pinned right edge, vertically centered */}
       <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
         <LifeButton sign={1} onChange={handleLifeChange} />
       </div>
 
-      {/* Counters - pinned bottom */}
       <div
         style={{
           position: "absolute", bottom: 4, left: 0, right: 0,

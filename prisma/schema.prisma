@@ -162,3 +162,11 @@ model GamePlayer {
   @@index([userId])
   @@index([deckId])
 }
+
+model LoginAttempt {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  failedCount Int       @default(0)
+  lockedUntil DateTime?
+  updatedAt   DateTime  @updatedAt
+}
