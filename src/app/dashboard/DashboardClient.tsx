@@ -32,12 +32,6 @@ export default function DashboardClient({
   const [playerCount, setPlayerCount] = useState(format.min);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
-  }
-
   function handleFormatChange(key: string) {
     const f = FORMAT_OPTIONS.find((x) => x.key === key)!;
     setFormatKey(key);
@@ -65,7 +59,7 @@ export default function DashboardClient({
     <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, color: "white" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700 }}>Hey, {displayName}</h1>
-        <button onClick={handleLogout} style={ghostBtn}>Log out</button>
+        <Link href="/profile" style={ghostBtn}>Profile</Link>
       </div>
 
       <Link
@@ -162,5 +156,5 @@ const primaryBtn: React.CSSProperties = {
 };
 const ghostBtn: React.CSSProperties = {
   padding: "10px 16px", borderRadius: 8, border: "1px solid #444",
-  background: "transparent", color: "white", fontSize: 15, cursor: "pointer",
+  background: "transparent", color: "white", fontSize: 15, cursor: "pointer", textDecoration: "none",
 };

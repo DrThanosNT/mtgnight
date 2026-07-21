@@ -22,34 +22,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     ORDER BY wins DESC
   `;
 
-  const bySeat = await prisma.$queryRaw<{ seatOrder: number; gamesPlayed: bigint; wins: bigint }[]>`
-    SELECT gp."seatOrder", COUNT(*)::bigint AS "gamesPlayed",
-           SUM(CASE WHEN gp."isWinner" THEN 1 ELSE 0 END)::bigint AS wins
-    FROM "GamePlayer" gp
-    JOIN "Game" g ON g.id = gp."gameId"
-    WHERE g."groupId" = ${groupId}
-    GROUP BY gp."seatOrder"
-    ORDER BY gp."seatOrder" ASC
-  `;
+  const players = perPlayer.map((r) => ({
+    userId: r.userId,
+    displayName: r.displayName,
+    gamesPlayed: Number(r.gamesPlayed),
+    wins: Number(r.wins),
+    winRate: Number(r.gamesPlayed) > 0 ? Number(r.wins) / Number(r.gamesPlayed) : 0,
+  }));
 
-  const byDeck = await prisma.$queryRaw<{ deckId: string; deckName: string; ownerId: string; gamesPlayed: bigint; wins: bigint }[]>`
-    SELECT gp."deckId", d.name AS "deckName", d."ownerId", COUNT(*)::bigint AS "gamesPlayed",
-           SUM(CASE WHEN gp."isWinner" THEN 1 ELSE 0 END)::bigint AS wins
-    FROM "GamePlayer" gp
-    JOIN "Game" g ON g.id = gp."gameId"
-    JOIN "Deck" d ON d.id = gp."deckId"
-    WHERE g."groupId" = ${groupId} AND gp."deckId" IS NOT NULL
-    GROUP BY gp."deckId", d.name, d."ownerId"
-    ORDER BY wins DESC
-  `;
-
-  const toRate = (rows: { wins: bigint; gamesPlayed: bigint }[]) =>
-    rows.map((r) => ({
-      ...r,
-      wins: Number(r.wins),
-      gamesPlayed: Number(r.gamesPlayed),
-      winRate: Number(r.gamesPlayed) > 0 ? Number(r.wins) / Number(r.gamesPlayed) : 0,
-    }));
-
-  return NextResponse.json({ perPlayer: toRate(perPlayer), bySeat: toRate(bySeat), byDeck: toRate(byDeck) });
+  return NextResponse.json({ players });
 }

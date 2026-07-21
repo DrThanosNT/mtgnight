@@ -3,16 +3,6 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getActiveMembership } from "@/lib/groups";
 
-const COMMANDER_LIKE_FORMATS = new Set([
-  "COMMANDER",
-  "DUEL_COMMANDER",
-  "OATHBREAKER",
-  "BRAWL",
-  "HISTORIC_BRAWL",
-  "TINY_LEADERS",
-  "ARCHENEMY_COMMANDER",
-]);
-
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string; userId: string }> }
@@ -30,17 +20,10 @@ export async function GET(
   const targetMembership = await getActiveMembership(id, userId);
   if (!targetMembership) return NextResponse.json({ error: "That user is not an active member" }, { status: 404 });
 
-  const showCommanders = COMMANDER_LIKE_FORMATS.has(group.format);
-
   const decks = await prisma.deck.findMany({
     where: { ownerId: userId, format: group.format },
-    select: {
-      id: true,
-      name: true,
-      cardCount: true,
-      colorIdentity: true,
-      commanders: showCommanders,
-    },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
   });
 
   return NextResponse.json({ decks });

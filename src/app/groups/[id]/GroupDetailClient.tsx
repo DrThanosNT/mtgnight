@@ -5,17 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 type Member = { userId: string; displayName: string; isOwner: boolean; isMe: boolean };
-type Deck = { id: string; name: string; commanders: string[]; cardCount: number | null };
 
 export default function GroupDetailClient({
   group,
   members,
-  myDecks,
   isOwner,
 }: {
   group: { id: string; name: string; format: string; playerCount: number };
   members: Member[];
-  myDecks: Deck[];
   isOwner: boolean;
 }) {
   const router = useRouter();
@@ -23,11 +20,6 @@ export default function GroupDetailClient({
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-
-  const [moxfieldUrl, setMoxfieldUrl] = useState("");
-  const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [decks, setDecks] = useState(myDecks);
 
   const [leaving, setLeaving] = useState(false);
 
@@ -42,10 +34,6 @@ export default function GroupDetailClient({
     setInviteUrl(`${window.location.origin}${data.joinUrl}`);
   }
 
-  // navigator.clipboard only exists in secure contexts (HTTPS, or
-  // localhost) - on a plain HTTP LAN address it's undefined entirely.
-  // Fall back to the classic hidden-textarea + execCommand trick, which
-  // still works over plain HTTP.
   function copyInvite() {
     if (!inviteUrl) return;
 
@@ -74,32 +62,6 @@ export default function GroupDetailClient({
     document.body.removeChild(textarea);
   }
 
-  async function handleImportDeck(e: React.FormEvent) {
-    e.preventDefault();
-    setImportError(null);
-    setImporting(true);
-    const res = await fetch("/api/decks/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: moxfieldUrl }),
-    });
-    setImporting(false);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setImportError(typeof data.error === "string" ? data.error : "Import failed");
-      return;
-    }
-    const deck = await res.json();
-    if (deck.format !== group.format) {
-      setImportError(
-        `Imported "${deck.name}", but it's a ${deck.format ?? "unrecognized-format"} deck, not ${group.format}. It won't show up for this group.`
-      );
-    } else {
-      setDecks((prev) => [...prev, deck]);
-    }
-    setMoxfieldUrl("");
-  }
-
   async function handleLeave() {
     if (!confirm(`Leave ${group.name}? Your stats stay, but you'll lose access to the group.`)) return;
     setLeaving(true);
@@ -112,11 +74,14 @@ export default function GroupDetailClient({
     <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, color: "white" }}>
       <Link href="/dashboard" style={backLink}>← Dashboard</Link>
 
-      <div style={{ marginBottom: 24, marginTop: 12 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700 }}>{group.name}</h1>
-        <p style={{ opacity: 0.6, fontSize: 14 }}>
-          {group.format} · {group.playerCount}-player games
-        </p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, marginTop: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700 }}>{group.name}</h1>
+          <p style={{ opacity: 0.6, fontSize: 14 }}>
+            {group.format} · {group.playerCount}-player games
+          </p>
+        </div>
+        <Link href="/profile" style={ghostBtn}>Profile</Link>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 32, flexWrap: "wrap" }}>
@@ -156,38 +121,6 @@ export default function GroupDetailClient({
           )}
           {inviteError && <p style={{ color: "#e08080", fontSize: 13, marginTop: 6 }}>{inviteError}</p>}
         </div>
-      </section>
-
-      <section style={{ marginBottom: 32 }}>
-        <h2 style={sectionHeading}>Your {group.format} decks</h2>
-        {decks.length === 0 && (
-          <p style={{ opacity: 0.6, fontSize: 14, marginBottom: 12 }}>
-            No {group.format} decks imported yet.
-          </p>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
-          {decks.map((d) => (
-            <div key={d.id} style={memberRow}>
-              <span>{d.name}</span>
-              <span style={{ fontSize: 12, opacity: 0.6 }}>
-                {d.commanders.length > 0 ? d.commanders.join(" / ") : `${d.cardCount ?? "?"} cards`}
-              </span>
-            </div>
-          ))}
-        </div>
-        <form onSubmit={handleImportDeck} style={{ display: "flex", gap: 8 }}>
-          <input
-            placeholder="https://moxfield.com/decks/..."
-            value={moxfieldUrl}
-            onChange={(e) => setMoxfieldUrl(e.target.value)}
-            required
-            style={{ ...input, flex: 1 }}
-          />
-          <button type="submit" disabled={importing} style={ghostBtn}>
-            {importing ? "Importing…" : "Import"}
-          </button>
-        </form>
-        {importError && <p style={{ color: "#e08080", fontSize: 13, marginTop: 6 }}>{importError}</p>}
       </section>
 
       <button onClick={handleLeave} disabled={leaving} style={dangerBtn}>

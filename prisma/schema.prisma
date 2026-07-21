@@ -112,24 +112,17 @@ model GroupInvite {
 }
 
 model Deck {
-  id            String   @id @default(cuid())
-  ownerId       String
-  owner         User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name          String
-  format        Format?
-  formatRaw     String?
-  moxfieldId    String?
-  moxfieldUrl   String?
-  commanders    String[]
-  colorIdentity String[]
-  cardCount     Int?
-  rawData       Json?
-  importedAt    DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  format    Format
+  createdAt DateTime @default(now())
 
   gamePlayers GamePlayer[]
 
   @@index([ownerId])
+  @@index([ownerId, format])
 }
 
 model Game {
@@ -155,7 +148,7 @@ model GamePlayer {
   userId          String
   user            User      @relation(fields: [userId], references: [id])
   deckId          String?
-  deck            Deck?     @relation(fields: [deckId], references: [id])
+  deck            Deck?     @relation(fields: [deckId], references: [id], onDelete: SetNull)
   seatOrder       Int
   startingLife    Int
   finalLife       Int?

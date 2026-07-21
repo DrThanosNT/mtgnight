@@ -1,7 +1,7 @@
 {
-  "name": "MTG Group Tracker",
-  "short_name": "MTG Tracker",
-  "description": "Life counter, deck manager, and group stats for Magic: The Gathering playgroups",
+  "name": "mtgnight",
+  "short_name": "mtgnight",
+  "description": "Life counter and group stats for Magic: The Gathering playgroups",
   "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#0b0d12",
