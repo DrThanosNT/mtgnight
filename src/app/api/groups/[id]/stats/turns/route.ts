@@ -16,10 +16,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const winnerId = searchParams.get("winnerId");
   const deckIds = searchParams.getAll("deckId");
   const playedFirst = searchParams.get("playedFirst");
+  const participantIds = searchParams.getAll("playerId"); // exact-set filter, same rule as the win-rate list
+
+  // Exact-set participant filter, reusable in both branches below.
+  const participantCondition =
+    participantIds.length > 0
+      ? Prisma.sql`
+          AND g.id IN (
+            SELECT gp3."gameId"
+            FROM "GamePlayer" gp3
+            GROUP BY gp3."gameId"
+            HAVING COUNT(*) = ${participantIds.length}
+               AND COUNT(*) FILTER (WHERE gp3."userId" IN (${Prisma.join(participantIds)})) = ${participantIds.length}
+          )
+        `
+      : Prisma.empty;
 
   if (winnerId) {
-    // Scoped to one player's wins - deck/played-first filters make sense
-    // here since they're tied to that specific player's own game rows.
     const conditions: Prisma.Sql[] = [
       Prisma.sql`g."groupId" = ${groupId}`,
       Prisma.sql`gp."userId" = ${winnerId}`,
@@ -35,7 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       SELECT g."turnCount", COUNT(*)::bigint AS count
       FROM "GamePlayer" gp
       JOIN "Game" g ON g.id = gp."gameId"
-      WHERE ${whereClause}
+      WHERE ${whereClause} ${participantCondition}
       GROUP BY g."turnCount"
     `;
 
@@ -51,19 +64,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ mode: "wins", total, turns });
   }
 
-  // No specific player - distribution of ending turn across every game in
-  // the group. A game has exactly one turnCount regardless of player count,
-  // so dedupe on game id.
   const rows = await prisma.$queryRaw<{ turnCount: number; count: bigint }[]>`
     SELECT g."turnCount", COUNT(*)::bigint AS count
     FROM "Game" g
-    WHERE g."groupId" = ${groupId} AND g."turnCount" IS NOT NULL
+    WHERE g."groupId" = ${groupId} AND g."turnCount" IS NOT NULL ${participantCondition}
     GROUP BY g."turnCount"
   `;
 
   const totalRow = await prisma.$queryRaw<{ count: bigint }[]>`
     SELECT COUNT(*)::bigint AS count FROM "Game" g
-    WHERE g."groupId" = ${groupId} AND g."turnCount" IS NOT NULL
+    WHERE g."groupId" = ${groupId} AND g."turnCount" IS NOT NULL ${participantCondition}
   `;
   const totalGames = Number(totalRow[0]?.count ?? 0);
 

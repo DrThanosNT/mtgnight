@@ -16,8 +16,6 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
   const [participantFilter, setParticipantFilter] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    // Load the unfiltered roster once, to know who to show as pickable
-    // checkboxes regardless of whatever filter is currently applied below.
     fetch(`/api/groups/${groupId}/stats`)
       .then((r) => r.json())
       .then((data) => setAllPlayers((data.players ?? []).map((p: PlayerRow) => ({ userId: p.userId, displayName: p.displayName }))));
@@ -182,6 +180,19 @@ function TurnsSection({ groupId, players }: { groupId: string; players: { userId
   const [decksOfWinner, setDecksOfWinner] = useState<{ id: string; name: string }[]>([]);
   const [data, setData] = useState<{ mode: string; total: number; turns: TurnRow[] } | null>(null);
 
+  // Independent exact-set participant filter, mirroring the top section
+  // but scoped only to turn-distribution results.
+  const [participantFilter, setParticipantFilter] = useState<Set<string>>(new Set());
+
+  function toggleParticipant(userId: string) {
+    setParticipantFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
+
   useEffect(() => {
     if (!winnerId) {
       setDecksOfWinner([]);
@@ -200,16 +211,50 @@ function TurnsSection({ groupId, players }: { groupId: string; players: { userId
       deckIds.forEach((id) => params.append("deckId", id));
       if (playedFirstFilter) params.set("playedFirst", playedFirstFilter);
     }
+    participantFilter.forEach((id) => params.append("playerId", id));
     fetch(`/api/groups/${groupId}/stats/turns?${params.toString()}`)
       .then((r) => r.json())
       .then(setData);
-  }, [groupId, winnerId, deckIds, playedFirstFilter]);
+  }, [groupId, winnerId, deckIds, playedFirstFilter, participantFilter]);
 
   return (
     <section style={{ marginTop: 32 }}>
       <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>
         Turns games ended on
       </h2>
+
+      <div style={{ marginBottom: 12 }}>
+        <p style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>
+          Filter to games where exactly this set of players took part:
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+          {players.map((p) => {
+            const selected = participantFilter.has(p.userId);
+            return (
+              <button
+                key={p.userId}
+                onClick={() => toggleParticipant(p.userId)}
+                style={{
+                  padding: "6px 12px", borderRadius: 20, fontSize: 13, cursor: "pointer",
+                  border: selected ? "1px solid #c9a227" : "1px solid #333",
+                  background: selected ? "rgba(201,162,39,0.15)" : "#1a1a1a",
+                  color: "white",
+                }}
+              >
+                {p.displayName}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={() => setParticipantFilter(new Set(players.map((p) => p.userId)))} style={filterBtn}>
+            Select everyone
+          </button>
+          <button onClick={() => setParticipantFilter(new Set())} style={filterBtn}>
+            Clear filter
+          </button>
+        </div>
+      </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <select value={winnerId} onChange={(e) => setWinnerId(e.target.value)} style={selectStyle}>
@@ -244,7 +289,7 @@ function TurnsSection({ groupId, players }: { groupId: string; players: { userId
       </div>
 
       {!data && <p style={{ opacity: 0.6, fontSize: 14 }}>Loading…</p>}
-      {data && data.turns.length === 0 && <p style={{ opacity: 0.6, fontSize: 14 }}>No games with a recorded turn count yet.</p>}
+      {data && data.turns.length === 0 && <p style={{ opacity: 0.6, fontSize: 14 }}>No games match this filter.</p>}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {data?.turns.map((t) => (
           <div key={t.turn} style={{ display: "flex", alignItems: "center", gap: 10, background: "#1a1a1a", borderRadius: 6, padding: "8px 12px" }}>
