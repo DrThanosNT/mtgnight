@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import LifeCounterGame from "@/components/LifeCounter";
+import { FORMATS } from "@/lib/formats";
 
 const PALETTE = [
   "#7f3b3b", "#3b5c7f", "#3b7f52", "#7f6f3b",
@@ -21,6 +22,7 @@ export default function GroupGameSetupPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [decksByMember, setDecksByMember] = useState<Record<string, Deck[]>>({});
   const [selectedDeck, setSelectedDeck] = useState<Record<string, string>>({});
+  const [includedIds, setIncludedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -35,6 +37,7 @@ export default function GroupGameSetupPage() {
         setGroup(groupRes);
         const activeMembers: Member[] = membersRes.members;
         setMembers(activeMembers);
+        setIncludedIds(new Set(activeMembers.map((m) => m.userId))); // everyone included by default
 
         const deckLists = await Promise.all(
           activeMembers.map((m) =>
@@ -63,7 +66,24 @@ export default function GroupGameSetupPage() {
   if (loading) return <p style={{ color: "white", padding: 24 }}>Loading…</p>;
   if (error || !group) return <p style={{ color: "white", padding: 24 }}>{error ?? "Group not found."}</p>;
 
-  const everyoneHasADeck = members.every(
+  const formatMeta = FORMATS[group.format as keyof typeof FORMATS];
+  const minPlayers = Math.max(2, formatMeta?.minPlayers ?? 2);
+  const includedMembers = members.filter((m) => includedIds.has(m.userId));
+
+  function toggleIncluded(userId: string) {
+    setIncludedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        if (next.size <= minPlayers) return prev; // never drop below the minimum
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  }
+
+  const everyoneHasADeck = includedMembers.every(
     (m) => decksByMember[m.userId]?.length === 0 || Boolean(selectedDeck[m.userId])
   );
 
@@ -72,7 +92,7 @@ export default function GroupGameSetupPage() {
       <LifeCounterGame
         mode="group"
         startingLife={group.startingLife ?? 40}
-        initialPlayers={members.map((m, i) => ({
+        initialPlayers={includedMembers.map((m, i) => ({
           id: m.userId,
           name: m.displayName,
           deckId: selectedDeck[m.userId],
@@ -99,9 +119,35 @@ export default function GroupGameSetupPage() {
         <Link href="/dashboard" style={backLink}>Dashboard</Link>
       </div>
 
-      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Pick decks — {group.format}</h1>
+      <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Who's playing? — {group.format}</h1>
+      <p style={{ fontSize: 13, opacity: 0.6, marginBottom: 16 }}>
+        Tap a name to sit them out of this game (minimum {minPlayers} players).
+      </p>
 
-      {members.map((m) => {
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+        {members.map((m) => {
+          const included = includedIds.has(m.userId);
+          return (
+            <button
+              key={m.userId}
+              onClick={() => toggleIncluded(m.userId)}
+              style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left",
+                border: "1px solid #333", background: included ? "#1a2e22" : "#1a1a1a",
+                color: included ? "white" : "rgba(255,255,255,0.4)",
+              }}
+            >
+              <span>{m.displayName}</span>
+              <span style={{ fontSize: 12 }}>{included ? "Playing" : "Sitting out"}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Pick decks</h2>
+
+      {includedMembers.map((m) => {
         const decks = decksByMember[m.userId] ?? [];
         return (
           <div key={m.userId} style={{ marginBottom: 20 }}>

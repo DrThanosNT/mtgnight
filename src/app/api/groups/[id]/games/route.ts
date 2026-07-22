@@ -43,9 +43,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { players, turnCount } = parsed.data;
   const startingLife = parsed.data.startingLife ?? FORMATS[group.format as keyof typeof FORMATS].defaultLife;
 
-  if (players.length !== group.playerCount) {
+  // Playing fewer than the group's full configured count is allowed, down
+  // to whichever is higher: 2, or the format's own genuine minimum (some
+  // formats like Two-Headed Giant can't flex below their fixed size).
+  const formatMeta = FORMATS[group.format as keyof typeof FORMATS];
+  const minAllowed = Math.max(2, formatMeta.minPlayers);
+  const maxAllowed = group.playerCount;
+  if (players.length < minAllowed || players.length > maxAllowed) {
     return NextResponse.json(
-      { error: `This group plays ${group.playerCount}-player games, got ${players.length}` },
+      { error: `This group's games need between ${minAllowed} and ${maxAllowed} players, got ${players.length}` },
       { status: 400 }
     );
   }
