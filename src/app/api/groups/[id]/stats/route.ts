@@ -13,27 +13,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!membership) return NextResponse.json({ error: "Not a member of this group" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
-  const playerIds = searchParams.getAll("playerId"); // must ALL have played in the game (subset match, other players may also be present)
-  const fullAttendanceOnly = searchParams.get("fullAttendance") === "true";
+  const playerIds = searchParams.getAll("playerId");
 
   const gameFilterConditions: Prisma.Sql[] = [Prisma.sql`g."groupId" = ${groupId}`];
 
   if (playerIds.length > 0) {
+    // Exact set match: the game's total player count must equal the
+    // selection size, AND every one of the game's players must be in the
+    // selection - together these two conditions mean "this game's
+    // participants are exactly this set, no more, no fewer."
     gameFilterConditions.push(Prisma.sql`
       g.id IN (
         SELECT gp2."gameId"
         FROM "GamePlayer" gp2
-        WHERE gp2."userId" IN (${Prisma.join(playerIds)})
         GROUP BY gp2."gameId"
-        HAVING COUNT(DISTINCT gp2."userId") = ${playerIds.length}
+        HAVING COUNT(*) = ${playerIds.length}
+           AND COUNT(*) FILTER (WHERE gp2."userId" IN (${Prisma.join(playerIds)})) = ${playerIds.length}
       )
-    `);
-  }
-
-  if (fullAttendanceOnly) {
-    gameFilterConditions.push(Prisma.sql`
-      (SELECT COUNT(*) FROM "GamePlayer" gpAll WHERE gpAll."gameId" = g.id)
-      = (SELECT COUNT(*) FROM "GroupMember" gm WHERE gm."groupId" = ${groupId} AND gm."leftAt" IS NULL)
     `);
   }
 

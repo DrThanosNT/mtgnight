@@ -14,12 +14,10 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const [participantFilter, setParticipantFilter] = useState<Set<string>>(new Set());
-  const [fullAttendanceOnly, setFullAttendanceOnly] = useState(false);
 
   useEffect(() => {
-    // Load the unfiltered list once, to know who the full roster is for
-    // the participant-picker checkboxes (independent of whatever filter
-    // is currently applied to the results below).
+    // Load the unfiltered roster once, to know who to show as pickable
+    // checkboxes regardless of whatever filter is currently applied below.
     fetch(`/api/groups/${groupId}/stats`)
       .then((r) => r.json())
       .then((data) => setAllPlayers((data.players ?? []).map((p: PlayerRow) => ({ userId: p.userId, displayName: p.displayName }))));
@@ -29,12 +27,11 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
     setLoading(true);
     const params = new URLSearchParams();
     participantFilter.forEach((id) => params.append("playerId", id));
-    if (fullAttendanceOnly) params.set("fullAttendance", "true");
     fetch(`/api/groups/${groupId}/stats?${params.toString()}`)
       .then((r) => r.json())
       .then((data) => setPlayers(data.players ?? []))
       .finally(() => setLoading(false));
-  }, [groupId, participantFilter, fullAttendanceOnly]);
+  }, [groupId, participantFilter]);
 
   function toggleParticipant(userId: string) {
     setParticipantFilter((prev) => {
@@ -47,13 +44,13 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
 
   function selectAllParticipants() {
     setParticipantFilter(new Set(allPlayers.map((p) => p.userId)));
-    setFullAttendanceOnly(true);
   }
 
   function clearParticipantFilter() {
     setParticipantFilter(new Set());
-    setFullAttendanceOnly(false);
   }
+
+  const filterActive = participantFilter.size > 0;
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, color: "white" }}>
@@ -61,9 +58,9 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
       <h1 style={{ fontSize: 22, fontWeight: 700, marginTop: 12, marginBottom: 20 }}>{groupName} — stats</h1>
 
       <section style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Filter by who played</h2>
+        <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Filter by exact group of players</h2>
         <p style={{ fontSize: 12, opacity: 0.6, marginBottom: 10 }}>
-          Select players to only include games where all of them took part. Others may also have played.
+          Select players to see stats only for games where exactly this group played — no more, no fewer.
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
           {allPlayers.map((p) => {
@@ -85,13 +82,16 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
           })}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={selectAllParticipants} style={filterBtn}>Only full-group games</button>
-          <button onClick={clearParticipantFilter} style={filterBtn}>Clear filter</button>
+          <button onClick={selectAllParticipants} style={filterBtn}>Select everyone</button>
+          <button onClick={clearParticipantFilter} style={filterBtn}>Clear filter (show all games)</button>
         </div>
       </section>
 
       {loading && <p style={{ opacity: 0.6 }}>Loading…</p>}
-      {!loading && players.length === 0 && <p style={{ opacity: 0.6 }}>No games match this filter.</p>}
+      {!loading && filterActive && players.length === 0 && (
+        <p style={{ opacity: 0.6 }}>This exact group of players has never played together.</p>
+      )}
+      {!loading && !filterActive && players.length === 0 && <p style={{ opacity: 0.6 }}>No games recorded yet.</p>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {players.map((p) => (
@@ -105,7 +105,7 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
         ))}
       </div>
 
-      <TurnsSection groupId={groupId} players={allPlayers.length > 0 ? allPlayers.map((p) => ({ ...p, gamesPlayed: 0, wins: 0, winRate: 0 })) : players} />
+      <TurnsSection groupId={groupId} players={allPlayers} />
     </div>
   );
 }
