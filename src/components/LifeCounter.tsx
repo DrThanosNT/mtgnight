@@ -74,6 +74,17 @@ export default function LifeCounterGame(props: {
   const [activeTurnIdx, setActiveTurnIdx] = useState(0);
   const [turnCount, setTurnCount] = useState(1);
 
+  // boardOrder[i] = id of whichever player currently sits in grid cell i.
+  // Kept separate from `players` (which never reorders) and from
+  // `turnOrder` (which drives whose turn it is, independent of physical
+  // position). Dragging on the board only ever mutates this array -
+  // rotation is a property of the cell itself (see getLayout), so
+  // swapping who occupies a cell never touches rotation at all.
+  const [boardOrder, setBoardOrder] = useState<string[]>([]);
+
+  const [submitting, setSubmitting] = useState(false);
+  const submittedRef = useRef(false);
+
   function renamePlayer(id: string, name: string) {
     setSeating((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
   }
@@ -149,8 +160,11 @@ export default function LifeCounterGame(props: {
       }))
     );
     setTurnOrder(order);
+    setBoardOrder(seating.map((p) => p.id));
     setActiveTurnIdx(0);
     setTurnCount(1);
+    submittedRef.current = false;
+    setSubmitting(false);
     setPhase("playing");
   }
 
@@ -179,6 +193,17 @@ export default function LifeCounterGame(props: {
     );
   }
 
+  function swapBoardPositions(indexA: number, indexB: number) {
+    setBoardOrder((prev) => {
+      if (indexA === indexB || indexA < 0 || indexB < 0 || indexA >= prev.length || indexB >= prev.length) {
+        return prev;
+      }
+      const next = [...prev];
+      [next[indexA], next[indexB]] = [next[indexB], next[indexA]];
+      return next;
+    });
+  }
+
   function endTurn() {
     const next = (activeTurnIdx + 1) % turnOrder.length;
     setActiveTurnIdx(next);
@@ -192,6 +217,14 @@ export default function LifeCounterGame(props: {
   }
 
   function confirmWinner(winnerId: string | null) {
+    // Guards against the double-submit bug: a ref check is synchronous
+    // and blocks re-entry immediately, unlike a state flag which can lag
+    // a tick behind a fast double-tap. Once this fires once for a given
+    // game, every further call is a no-op.
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    setSubmitting(true);
+
     if (mode === "group" && onGameEnd) {
       onGameEnd({
         turnCount,
@@ -215,6 +248,7 @@ export default function LifeCounterGame(props: {
     setRolling(false);
     setRollingHighlight(null);
     setPlayers([]);
+    setBoardOrder([]);
     setActiveTurnIdx(0);
     setTurnCount(1);
   }
@@ -225,8 +259,8 @@ export default function LifeCounterGame(props: {
     return (
       <div style={centeredPhaseStyle}>
         <div style={{ maxWidth: 480, margin: "0 auto", width: "100%" }}>
-          <h2 style={headingStyle}>Arrange seating order</h2>
-          <p style={subtextStyle}>Drag to match how you're actually sitting around the table (clockwise).</p>
+          <h2 style={headingStyle}>Arrange turn order</h2>
+          <p style={subtextStyle}>Drag to set turn order, top to bottom, matching the table clockwise.</p>
           <div style={styles.seatList}>
             {seating.map((p, i) => (
               <div
@@ -315,11 +349,20 @@ export default function LifeCounterGame(props: {
           <h2 style={headingStyle}>Who won?</h2>
           <div style={styles.seatList}>
             {players.map((p) => (
-              <button key={p.id} onClick={() => confirmWinner(p.id)} style={{ ...styles.pickRow, background: p.color }}>
+              <button
+                key={p.id}
+                onClick={() => confirmWinner(p.id)}
+                disabled={submitting}
+                style={{ ...styles.pickRow, background: p.color, opacity: submitting ? 0.5 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
+              >
                 {p.name} — {p.life} life
               </button>
             ))}
-            <button style={{ ...ghostBtnStyle, width: "100%" }} onClick={() => confirmWinner(null)}>
+            <button
+              style={{ ...ghostBtnStyle, width: "100%", opacity: submitting ? 0.5 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
+              onClick={() => confirmWinner(null)}
+              disabled={submitting}
+            >
               No winner / didn't finish
             </button>
           </div>
@@ -344,28 +387,128 @@ export default function LifeCounterGame(props: {
         <button style={styles.smallBtn} onClick={endTurn}>End turn ▶</button>
         <button style={styles.smallBtn} onClick={finishGame}>End game</button>
       </div>
+      <GameBoard
+        layout={layout}
+        boardOrder={boardOrder}
+        players={players}
+        turnOrder={turnOrder}
+        activeTurnIdx={activeTurnIdx}
+        onLifeChange={adjustLife}
+        onCounterChange={adjustCounter}
+        onCommanderDamageChange={adjustCommanderDamage}
+        onSwapPositions={swapBoardPositions}
+      />
+    </div>
+  );
+}
+
+// ---------- Game board: grid + drag-to-swap-position handling ----------
+
+function GameBoard({
+  layout,
+  boardOrder,
+  players,
+  turnOrder,
+  activeTurnIdx,
+  onLifeChange,
+  onCounterChange,
+  onCommanderDamageChange,
+  onSwapPositions,
+}: {
+  layout: { cols: string; rows: string; cells: Cell[] };
+  boardOrder: string[];
+  players: PlayerState[];
+  turnOrder: string[];
+  activeTurnIdx: number;
+  onLifeChange: (id: string, delta: number) => void;
+  onCounterChange: (id: string, type: CounterType, delta: number) => void;
+  onCommanderDamageChange: (id: string, fromId: string, delta: number) => void;
+  onSwapPositions: (indexA: number, indexB: number) => void;
+}) {
+  const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const dragColorRef = useRef<string>("#fff");
+
+  function handleDragHandlePointerDown(e: React.PointerEvent, index: number, color: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragColorRef.current = color;
+    setDragFromIndex(index);
+    setDragPos({ x: e.clientX, y: e.clientY });
+  }
+
+  function handleDragHandlePointerMove(e: React.PointerEvent) {
+    if (dragFromIndex === null) return;
+    setDragPos({ x: e.clientX, y: e.clientY });
+  }
+
+  function handleDragHandlePointerUp(e: React.PointerEvent) {
+    if (dragFromIndex === null) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cellEl = el?.closest("[data-cell-index]") as HTMLElement | null;
+    if (cellEl) {
+      const targetIndex = Number(cellEl.dataset.cellIndex);
+      if (!Number.isNaN(targetIndex)) {
+        onSwapPositions(dragFromIndex, targetIndex);
+      }
+    }
+    setDragFromIndex(null);
+    setDragPos(null);
+  }
+
+  return (
+    <>
       <div
         style={{
           display: "grid", gridTemplateColumns: layout.cols, gridTemplateRows: layout.rows,
           gap: 8, flex: 1, minHeight: 0, minWidth: 0,
         }}
       >
-        {players.map((p, i) => (
-          <div key={p.id} style={{ gridRow: layout.cells[i].row, gridColumn: layout.cells[i].col, minWidth: 0, minHeight: 0 }}>
-            <RotatableBlock rotation={layout.cells[i].rotation}>
-              <PlayerBlockContent
-                player={p}
-                allPlayers={players}
-                isActiveTurn={turnOrder[activeTurnIdx] === p.id}
-                onLifeChange={(d) => adjustLife(p.id, d)}
-                onCounterChange={(t, d) => adjustCounter(p.id, t, d)}
-                onCommanderDamageChange={(fromId, d) => adjustCommanderDamage(p.id, fromId, d)}
-              />
-            </RotatableBlock>
-          </div>
-        ))}
+        {boardOrder.map((playerId, i) => {
+          const player = players.find((p) => p.id === playerId);
+          if (!player) return null;
+          return (
+            <div
+              key={playerId}
+              data-cell-index={i}
+              style={{
+                gridRow: layout.cells[i].row, gridColumn: layout.cells[i].col, minWidth: 0, minHeight: 0,
+                opacity: dragFromIndex === i ? 0.4 : 1,
+              }}
+            >
+              <RotatableBlock rotation={layout.cells[i].rotation}>
+                <PlayerBlockContent
+                  player={player}
+                  allPlayers={players}
+                  isActiveTurn={turnOrder[activeTurnIdx] === player.id}
+                  onLifeChange={(d) => onLifeChange(player.id, d)}
+                  onCounterChange={(t, d) => onCounterChange(player.id, t, d)}
+                  onCommanderDamageChange={(fromId, d) => onCommanderDamageChange(player.id, fromId, d)}
+                  onDragHandleDown={(e) => handleDragHandlePointerDown(e, i, player.color)}
+                  onDragHandleMove={handleDragHandlePointerMove}
+                  onDragHandleUp={handleDragHandlePointerUp}
+                />
+              </RotatableBlock>
+            </div>
+          );
+        })}
       </div>
-    </div>
+
+      {/* Drag ghost - deliberately NOT rotated, just a simple floating
+          indicator following the finger. It doesn't need to represent the
+          card's rotated orientation since it's only a drag cue, not the
+          actual content. */}
+      {dragPos && (
+        <div
+          style={{
+            position: "fixed", left: dragPos.x - 24, top: dragPos.y - 24, width: 48, height: 48,
+            borderRadius: "50%", background: dragColorRef.current, border: "3px solid white",
+            pointerEvents: "none", zIndex: 999, opacity: 0.85,
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -492,8 +635,8 @@ function RotatableBlock({ rotation, children }: { rotation: 0 | 90 | 180 | 270; 
 
 // ---------- Tap-vs-hold life button ----------
 
-const HOLD_THRESHOLD_MS = 1000;
-const HOLD_REPEAT_MS = 1000;
+const HOLD_THRESHOLD_MS = 750;
+const HOLD_REPEAT_MS = 750;
 
 function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) => void }) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -508,6 +651,7 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
 
   function start(e: React.PointerEvent) {
     e.preventDefault();
+    e.stopPropagation();
     if (activeRef.current) return;
     activeRef.current = true;
     holdTriggeredRef.current = false;
@@ -518,7 +662,8 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
     }, HOLD_THRESHOLD_MS);
   }
 
-  function end() {
+  function end(e: React.PointerEvent) {
+    e.stopPropagation();
     if (!activeRef.current) return;
     activeRef.current = false;
     if (timeoutRef.current) {
@@ -556,6 +701,9 @@ function PlayerBlockContent({
   onLifeChange,
   onCounterChange,
   onCommanderDamageChange,
+  onDragHandleDown,
+  onDragHandleMove,
+  onDragHandleUp,
 }: {
   player: PlayerState;
   allPlayers: PlayerState[];
@@ -563,6 +711,9 @@ function PlayerBlockContent({
   onLifeChange: (delta: number) => void;
   onCounterChange: (type: CounterType, delta: number) => void;
   onCommanderDamageChange: (fromId: string, delta: number) => void;
+  onDragHandleDown: (e: React.PointerEvent) => void;
+  onDragHandleMove: (e: React.PointerEvent) => void;
+  onDragHandleUp: (e: React.PointerEvent) => void;
 }) {
   const [panel, setPanel] = useState<"none" | "counters" | "commanderDamage">("none");
   const opponents = allPlayers.filter((p) => p.id !== player.id);
@@ -605,7 +756,20 @@ function PlayerBlockContent({
       }}
     >
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ textAlign: "center", padding: "6px 8px 0", pointerEvents: "none", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 8px 0", flexShrink: 0 }}>
+          <button
+            onPointerDown={onDragHandleDown}
+            onPointerMove={onDragHandleMove}
+            onPointerUp={onDragHandleUp}
+            onPointerCancel={onDragHandleUp}
+            title="Drag to move this player"
+            style={{
+              background: "rgba(0,0,0,0.35)", border: "none", color: "white", borderRadius: 8,
+              width: 26, height: 26, fontSize: 14, cursor: "grab", touchAction: "none", flexShrink: 0,
+            }}
+          >
+            ⠿
+          </button>
           <span
             style={{
               display: "inline-block",
@@ -615,6 +779,7 @@ function PlayerBlockContent({
               fontWeight: 700,
               fontSize: "clamp(14px, 4.2vmin, 20px)",
               whiteSpace: "nowrap",
+              pointerEvents: "none",
             }}
           >
             {player.name}
@@ -823,13 +988,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   moveButtons: { display: "flex", gap: 4, flexShrink: 0 },
   smallBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer" },
-  // Toggle buttons ("Counters" / "Cmdr Dmg") - bumped up from the old tiny size
   tinyBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: "clamp(12px, 3.2vmin, 15px)", fontWeight: 600, cursor: "pointer" },
   topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", color: "white", padding: "4px 8px", marginBottom: 8, flexShrink: 0 },
   counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 10 },
   counterRow: { display: "flex", alignItems: "center", gap: 6, fontSize: "clamp(12px, 3.2vmin, 15px)" },
   counterBadge: { fontSize: "clamp(10px, 2.6vmin, 12px)", fontWeight: 700, padding: "4px 8px", borderRadius: 8, minWidth: 34, textAlign: "center" },
-  // +/- inside counter/cmdr-dmg rows - larger tap targets than before
   counterBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, width: "clamp(26px, 7vmin, 34px)", height: "clamp(26px, 7vmin, 34px)", fontSize: "clamp(14px, 3.8vmin, 18px)", fontWeight: 700, cursor: "pointer", flexShrink: 0 },
   counterValue: { minWidth: 22, textAlign: "center", fontSize: "clamp(13px, 3.4vmin, 16px)", fontWeight: 700 },
 };
