@@ -61,6 +61,15 @@ function partnerKey(id: string) {
   return `${id}::partner`;
 }
 
+// Scales a font/dimension as a fraction of the block's own smaller side,
+// clamped to a sane pixel range. This is what makes everything shrink
+// proportionally as more players are added (and blocks get smaller)
+// instead of relying on viewport units that don't account for how many
+// rows/columns are dividing the screen.
+function relSize(basis: number, fraction: number, min: number, max: number) {
+  return `${Math.min(max, Math.max(min, basis * fraction))}px`;
+}
+
 // ---------- Main component ----------
 
 export default function LifeCounterGame(props: {
@@ -512,18 +521,21 @@ function GameBoard({
               }}
             >
               <RotatableBlock rotation={layout.cells[i].rotation}>
-                <PlayerBlockContent
-                  player={player}
-                  allPlayers={players}
-                  isActiveTurn={turnOrder[activeTurnIdx] === player.id}
-                  showCommanders={showCommanders}
-                  onLifeChange={(d) => onLifeChange(player.id, d)}
-                  onCounterChange={(t, d) => onCounterChange(player.id, t, d)}
-                  onCommanderDamageChange={(sourceKey, d) => onCommanderDamageChange(player.id, sourceKey, d)}
-                  onDragHandleDown={(e) => handleDragHandlePointerDown(e, i, player.color)}
-                  onDragHandleMove={handleDragHandlePointerMove}
-                  onDragHandleUp={handleDragHandlePointerUp}
-                />
+                {(size) => (
+                  <PlayerBlockContent
+                    player={player}
+                    allPlayers={players}
+                    isActiveTurn={turnOrder[activeTurnIdx] === player.id}
+                    showCommanders={showCommanders}
+                    size={size}
+                    onLifeChange={(d) => onLifeChange(player.id, d)}
+                    onCounterChange={(t, d) => onCounterChange(player.id, t, d)}
+                    onCommanderDamageChange={(sourceKey, d) => onCommanderDamageChange(player.id, sourceKey, d)}
+                    onDragHandleDown={(e) => handleDragHandlePointerDown(e, i, player.color)}
+                    onDragHandleMove={handleDragHandlePointerMove}
+                    onDragHandleUp={handleDragHandlePointerUp}
+                  />
+                )}
               </RotatableBlock>
             </div>
           );
@@ -628,8 +640,18 @@ function SeatBackgroundPicker({
 }
 
 // ---------- Rotatable block ----------
+// children is now a render-prop: (size) => ReactNode. This hands the
+// block's actual measured pixel dimensions down to whatever renders
+// inside it, so content can size itself proportionally to its own real
+// box rather than guessing from viewport units.
 
-function RotatableBlock({ rotation, children }: { rotation: 0 | 90 | 180 | 270; children: React.ReactNode }) {
+function RotatableBlock({
+  rotation,
+  children,
+}: {
+  rotation: 0 | 90 | 180 | 270;
+  children: (size: { w: number; h: number }) => React.ReactNode;
+}) {
   const outerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
 
@@ -657,22 +679,29 @@ function RotatableBlock({ rotation, children }: { rotation: 0 | 90 | 180 | 270; 
             transform: `translate(-50%, -50%) rotate(${rotation}deg)`, display: "flex",
           }}
         >
-          {children}
+          {children({ w: innerWidth, h: innerHeight })}
         </div>
       )}
     </div>
   );
 }
 
-// ---------- Full-half tap zone: covers the entire left or right side of the
-// card's middle area. Tap = ±1, hold past 2s = ±10 repeating every 2s.
-// Flashes white while pressed/held. Both zones are flex siblings in one
-// row, so they're always visually on the same line as each other. ----------
+// ---------- Full-half tap zone ----------
+// Tap = ±1, released before 500ms. Hold past 500ms = ±10 immediately, then
+// ±10 again every 500ms for as long as it's held.
 
 const HOLD_THRESHOLD_MS = 500;
 const HOLD_REPEAT_MS = 500;
 
-function LifeZone({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) => void }) {
+function LifeZone({
+  sign,
+  onChange,
+  fontSize,
+}: {
+  sign: 1 | -1;
+  onChange: (delta: number) => void;
+  fontSize: string;
+}) {
   const [flash, setFlash] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -723,7 +752,7 @@ function LifeZone({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) 
       style={{
         flex: 1, position: "relative", border: "none", background: "transparent",
         touchAction: "none", cursor: "pointer", display: "flex", alignItems: "center",
-        justifyContent: sign === -1 ? "flex-start" : "flex-end", padding: "0 10px", boxSizing: "border-box",
+        justifyContent: sign === -1 ? "flex-start" : "flex-end", padding: "0 8%", boxSizing: "border-box",
       }}
     >
       <div
@@ -734,7 +763,7 @@ function LifeZone({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) 
       />
       <span
         style={{
-          fontSize: "clamp(28px, 9vmin, 44px)", fontWeight: 700, color: "white",
+          fontSize, fontWeight: 700, color: "white", lineHeight: 1,
           filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.6))", position: "relative", zIndex: 1,
         }}
       >
@@ -745,12 +774,18 @@ function LifeZone({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) 
 }
 
 // ---------- Player block content ----------
+// `size` is the block's real measured pixel dimensions (post-rotation),
+// so every font/dimension below is computed as a fraction of that actual
+// box rather than the viewport - this is what makes a 6-player layout's
+// text shrink to fit its genuinely smaller cells instead of staying at a
+// size only appropriate for a 2-player layout.
 
 function PlayerBlockContent({
   player,
   allPlayers,
   isActiveTurn,
   showCommanders,
+  size,
   onLifeChange,
   onCounterChange,
   onCommanderDamageChange,
@@ -762,6 +797,7 @@ function PlayerBlockContent({
   allPlayers: PlayerState[];
   isActiveTurn: boolean;
   showCommanders: boolean;
+  size: { w: number; h: number };
   onLifeChange: (delta: number) => void;
   onCounterChange: (type: CounterType, delta: number) => void;
   onCommanderDamageChange: (sourceKey: string, delta: number) => void;
@@ -795,10 +831,6 @@ function PlayerBlockContent({
 
   const panelOpen = panel !== "none";
 
-  // Falls back to the opponent's own player name if no commander name was
-  // ever set on their deck (e.g. a casual game, or a deck saved before a
-  // commander was filled in) - so there's always a legible label rather
-  // than a blank entry.
   const commanderRows: { key: string; label: string; color: string }[] = [];
   for (const opp of opponents) {
     commanderRows.push({ key: mainKey(opp.id), label: opp.commanderName || opp.name, color: opp.color });
@@ -806,6 +838,20 @@ function PlayerBlockContent({
       commanderRows.push({ key: partnerKey(opp.id), label: opp.partnerName, color: opp.color });
     }
   }
+
+  const basis = Math.min(size.w, size.h) || 200; // fallback before first measurement resolves
+
+  const nameFontSize = relSize(basis, 0.1, 11, 22);
+  const lifeFontSize = relSize(basis, 0.32, 26, 72);
+  const deltaFontSize = relSize(basis, 0.075, 10, 17);
+  const zoneFontSize = relSize(basis, 0.22, 20, 44);
+  const tinyBtnFontSize = relSize(basis, 0.065, 11, 16);
+  const counterBadgeFontSize = relSize(basis, 0.05, 9, 13);
+  const counterBtnFontSize = relSize(basis, 0.06, 13, 19);
+  const counterValueFontSize = relSize(basis, 0.06, 12, 17);
+  const dragHandleSize = relSize(basis, 0.13, 22, 30);
+  const namePadY = relSize(basis, 0.018, 3, 5);
+  const namePadX = relSize(basis, 0.05, 8, 13);
 
   return (
     <div
@@ -822,7 +868,7 @@ function PlayerBlockContent({
       }}
     >
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 8px 0", flexShrink: 0, zIndex: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "4%", padding: "5% 6% 0", flexShrink: 0, zIndex: 2 }}>
           <button
             onPointerDown={onDragHandleDown}
             onPointerMove={onDragHandleMove}
@@ -831,7 +877,8 @@ function PlayerBlockContent({
             title="Drag to move this player"
             style={{
               background: "rgba(0,0,0,0.35)", border: "none", color: "white", borderRadius: 8,
-              width: 28, height: 28, fontSize: 15, cursor: "grab", touchAction: "none", flexShrink: 0,
+              width: dragHandleSize, height: dragHandleSize, fontSize: relSize(basis, 0.06, 10, 15),
+              cursor: "grab", touchAction: "none", flexShrink: 0,
             }}
           >
             ⠿
@@ -840,10 +887,10 @@ function PlayerBlockContent({
             style={{
               display: "inline-block",
               background: "rgba(0,0,0,0.45)",
-              padding: "4px 12px",
+              padding: `${namePadY} ${namePadX}`,
               borderRadius: 10,
               fontWeight: 700,
-              fontSize: "clamp(16px, 4.8vmin, 23px)",
+              fontSize: nameFontSize,
               whiteSpace: "nowrap",
               pointerEvents: "none",
             }}
@@ -852,12 +899,12 @@ function PlayerBlockContent({
           </span>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 6, flexShrink: 0, zIndex: 2 }}>
-          <button style={styles.tinyBtn} onClick={() => setPanel(panel === "counters" ? "none" : "counters")}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: "3%", flexShrink: 0, zIndex: 2 }}>
+          <button style={{ ...styles.tinyBtn, fontSize: tinyBtnFontSize }} onClick={() => setPanel(panel === "counters" ? "none" : "counters")}>
             {panel === "counters" ? "Hide" : "Counters"}
           </button>
           {showCommanders && (
-            <button style={styles.tinyBtn} onClick={() => setPanel(panel === "commanderDamage" ? "none" : "commanderDamage")}>
+            <button style={{ ...styles.tinyBtn, fontSize: tinyBtnFontSize }} onClick={() => setPanel(panel === "commanderDamage" ? "none" : "commanderDamage")}>
               {panel === "commanderDamage" ? "Hide" : "Cmdr Dmg"}
             </button>
           )}
@@ -866,8 +913,8 @@ function PlayerBlockContent({
         <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
           {!panelOpen && (
             <div style={{ position: "absolute", inset: 0, display: "flex" }}>
-              <LifeZone sign={-1} onChange={handleLifeChange} />
-              <LifeZone sign={1} onChange={handleLifeChange} />
+              <LifeZone sign={-1} onChange={handleLifeChange} fontSize={zoneFontSize} />
+              <LifeZone sign={1} onChange={handleLifeChange} fontSize={zoneFontSize} />
             </div>
           )}
 
@@ -876,8 +923,9 @@ function PlayerBlockContent({
               <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span
                   style={{
-                    fontSize: "clamp(34px, 14.5vmin, 72px)",
+                    fontSize: lifeFontSize,
                     fontWeight: 700,
+                    lineHeight: 1,
                     textShadow: "0 2px 6px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4)",
                   }}
                 >
@@ -887,7 +935,7 @@ function PlayerBlockContent({
                   <span
                     style={{
                       position: "absolute", top: "-1.4em", right: "-1.6em",
-                      fontSize: "clamp(12px, 3.4vmin, 17px)", fontWeight: 700,
+                      fontSize: deltaFontSize, fontWeight: 700,
                       color: delta >= 0 ? "#8fd18f" : "#e08080",
                       background: "rgba(0,0,0,0.45)", padding: "2px 7px", borderRadius: 8,
                     }}
@@ -903,13 +951,13 @@ function PlayerBlockContent({
             <div style={{ position: "absolute", inset: "0 8px 8px 8px", overflowY: "auto" }}>
               <div style={styles.counterGrid}>
                 {COUNTER_TYPES.map((type) => (
-                  <div key={type} style={styles.counterRow}>
-                    <span style={{ ...styles.counterBadge, background: COUNTER_META[type].badgeColor }}>
+                  <div key={type} style={{ ...styles.counterRow, fontSize: counterValueFontSize }}>
+                    <span style={{ ...styles.counterBadge, background: COUNTER_META[type].badgeColor, fontSize: counterBadgeFontSize }}>
                       {COUNTER_META[type].tag}
                     </span>
-                    <button style={styles.counterBtn} onClick={() => onCounterChange(type, -1)}>-</button>
-                    <span style={styles.counterValue}>{player.counters[type]}</span>
-                    <button style={styles.counterBtn} onClick={() => onCounterChange(type, 1)}>+</button>
+                    <button style={{ ...styles.counterBtn, fontSize: counterBtnFontSize }} onClick={() => onCounterChange(type, -1)}>-</button>
+                    <span style={{ ...styles.counterValue, fontSize: counterValueFontSize }}>{player.counters[type]}</span>
+                    <button style={{ ...styles.counterBtn, fontSize: counterBtnFontSize }} onClick={() => onCounterChange(type, 1)}>+</button>
                   </div>
                 ))}
               </div>
@@ -920,25 +968,25 @@ function PlayerBlockContent({
             <div style={{ position: "absolute", inset: "0 8px 8px 8px", overflowY: "auto" }}>
               <div style={{ ...styles.counterGrid, gridTemplateColumns: "1fr" }}>
                 {commanderRows.length === 0 && (
-                  <p style={{ fontSize: 12, opacity: 0.6, padding: 4 }}>No opponents in this game.</p>
+                  <p style={{ fontSize: counterBadgeFontSize, opacity: 0.6, padding: 4 }}>No opponents in this game.</p>
                 )}
                 {commanderRows.map((row) => {
                   const dmg = player.commanderDamageTaken[row.key] ?? 0;
                   const lethal = dmg >= 21;
                   return (
-                    <div key={row.key} style={styles.counterRow}>
+                    <div key={row.key} style={{ ...styles.counterRow, fontSize: counterValueFontSize }}>
                       <span
                         style={{
-                          ...styles.counterBadge, background: row.color,
+                          ...styles.counterBadge, background: row.color, fontSize: counterBadgeFontSize,
                           outline: lethal ? "2px solid #ff5050" : "none",
                         }}
                         title={row.label}
                       >
                         {row.label.slice(0, 8)}
                       </span>
-                      <button style={styles.counterBtn} onClick={() => handleCommanderDamageChange(row.key, -1)}>-</button>
-                      <span style={{ ...styles.counterValue, color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
-                      <button style={styles.counterBtn} onClick={() => handleCommanderDamageChange(row.key, 1)}>+</button>
+                      <button style={{ ...styles.counterBtn, fontSize: counterBtnFontSize }} onClick={() => handleCommanderDamageChange(row.key, -1)}>-</button>
+                      <span style={{ ...styles.counterValue, fontSize: counterValueFontSize, color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
+                      <button style={{ ...styles.counterBtn, fontSize: counterBtnFontSize }} onClick={() => handleCommanderDamageChange(row.key, 1)}>+</button>
                     </div>
                   );
                 })}
@@ -1031,6 +1079,10 @@ const subtextStyle: React.CSSProperties = {
 };
 
 // ---------- Styles ----------
+// Font sizes here are the ones used OUTSIDE the game board (setup/summary
+// screens) where fixed sizing is fine since those aren't affected by
+// player-count-driven resizing. In-board equivalents (tinyBtn, counter*)
+// get their fontSize overridden per-instance from relSize() above.
 
 const styles: Record<string, React.CSSProperties> = {
   seatList: { display: "flex", flexDirection: "column", gap: 10 },
@@ -1054,11 +1106,11 @@ const styles: Record<string, React.CSSProperties> = {
   },
   moveButtons: { display: "flex", gap: 4, flexShrink: 0 },
   smallBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer" },
-  tinyBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: "clamp(13px, 3.4vmin, 16px)", fontWeight: 600, cursor: "pointer" },
+  tinyBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, padding: "6px 12px", fontWeight: 600, cursor: "pointer" },
   topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", color: "white", padding: "4px 8px", marginBottom: 8, flexShrink: 0 },
   counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 10 },
-  counterRow: { display: "flex", alignItems: "center", gap: 6, fontSize: "clamp(13px, 3.4vmin, 16px)" },
-  counterBadge: { fontSize: "clamp(10px, 2.8vmin, 13px)", fontWeight: 700, padding: "4px 8px", borderRadius: 8, minWidth: 40, textAlign: "center" },
-  counterBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, width: "clamp(28px, 7.5vmin, 36px)", height: "clamp(28px, 7.5vmin, 36px)", fontSize: "clamp(15px, 4vmin, 19px)", fontWeight: 700, cursor: "pointer", flexShrink: 0 },
-  counterValue: { minWidth: 24, textAlign: "center", fontSize: "clamp(14px, 3.6vmin, 17px)", fontWeight: 700 },
+  counterRow: { display: "flex", alignItems: "center", gap: 6 },
+  counterBadge: { fontWeight: 700, padding: "4px 8px", borderRadius: 8, minWidth: 40, textAlign: "center" },
+  counterBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, width: "clamp(28px, 7.5vmin, 36px)", height: "clamp(28px, 7.5vmin, 36px)", fontWeight: 700, cursor: "pointer", flexShrink: 0 },
+  counterValue: { minWidth: 24, textAlign: "center", fontWeight: 700 },
 };
