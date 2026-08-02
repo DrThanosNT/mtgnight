@@ -3,12 +3,12 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ username: string }> }) {
-  const { username } = await params;
+export async function GET(req: NextRequest, { params }: { params: Promise<{ name: string }> }) {
+  const { name } = await params;
   const viewer = await getCurrentUser();
   if (!viewer) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const target = await prisma.user.findUnique({ where: { username } });
+  const target = await prisma.user.findUnique({ where: { displayName: name } });
   if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ user
   });
 
   return NextResponse.json({
-    displayName: target.displayName, username: target.username,
+    displayName: target.displayName,
     gamesPlayed, wins, winRate: gamesPlayed > 0 ? wins / gamesPlayed : 0,
     groupsPlayed, decksUsed, seatWins, turns,
   });

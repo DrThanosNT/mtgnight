@@ -160,9 +160,8 @@ model LoginAttempt {
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
-  username     String?  @unique
+  displayName  String   @unique
   passwordHash String
-  displayName  String
   createdAt    DateTime @default(now())
 
   sessions     Session[]

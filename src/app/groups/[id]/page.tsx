@@ -18,7 +18,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
 
   const members = await prisma.groupMember.findMany({
     where: { groupId: id, leftAt: null },
-    include: { user: { select: { id: true, displayName: true, username: true } } },
+    include: { user: { select: { id: true, displayName: true } } },
     orderBy: { joinedAt: "asc" },
   });
 
@@ -28,7 +28,6 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
       members={members.map((m) => ({
         userId: m.user.id,
         displayName: m.user.displayName,
-        username: m.user.username,
         isOwner: m.role === "owner",
         isMe: m.user.id === user.id,
       }))}

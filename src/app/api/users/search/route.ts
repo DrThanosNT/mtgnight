@@ -11,9 +11,9 @@ export async function GET(req: NextRequest) {
   if (!q || q.length < 2) return NextResponse.json({ results: [] });
 
   const users = await prisma.user.findMany({
-    where: { username: { not: null, contains: q, mode: "insensitive" } },
-    select: { username: true, displayName: true },
-    take: 10,
+    where: { displayName: { contains: q, mode: "insensitive" } },
+    select: { displayName: true },
+    take: 20,
   });
 
   return NextResponse.json({ results: users });

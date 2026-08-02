@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Sidebar from "@/components/Sidebar";
 
 type Option = { id: string; name: string };
 type SeatStat = { seat: number; gamesPlayed: number; wins: number; winRate: number };
@@ -11,7 +12,7 @@ type StatsResult = {
   groupsPlayed: Option[]; decksUsed: Option[]; seatWins: SeatStat[]; turns: TurnStat[];
 };
 
-export default function PublicProfileClient({ displayName, username }: { displayName: string; username: string }) {
+export default function PublicProfileClient({ displayName }: { displayName: string }) {
   const [stats, setStats] = useState<StatsResult | null>(null);
   const [groupFilter, setGroupFilter] = useState("");
   const [deckFilter, setDeckFilter] = useState("");
@@ -22,18 +23,16 @@ export default function PublicProfileClient({ displayName, username }: { display
     if (groupFilter) params.set("groupId", groupFilter);
     if (deckFilter) params.set("deckId", deckFilter);
     if (seatFilter) params.set("seat", seatFilter);
-    fetch(`/api/users/${username}/stats?${params.toString()}`)
+    fetch(`/api/users/${encodeURIComponent(displayName)}/stats?${params.toString()}`)
       .then((r) => r.json())
       .then(setStats);
-  }, [username, groupFilter, deckFilter, seatFilter]);
+  }, [displayName, groupFilter, deckFilter, seatFilter]);
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, color: "white" }}>
-      <Link href="/dashboard" style={{ color: "#8fbf9f", fontSize: 14, textDecoration: "none" }}>← Dashboard</Link>
-
+      <Sidebar />
       <div style={{ marginTop: 12, marginBottom: 20 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700 }}>{displayName}</h1>
-        <p style={{ opacity: 0.6, fontSize: 14 }}>@{username}</p>
       </div>
 
       <section style={{ marginBottom: 24 }}>

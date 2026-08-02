@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Sidebar from "@/components/Sidebar";
 
 const FORMAT_OPTIONS = [
   { key: "COMMANDER", label: "Commander (EDH)" },
@@ -25,14 +26,8 @@ type StatsResult = {
   groupsPlayed: Option[]; decksUsed: Option[]; seatWins: SeatStat[]; turns: TurnStat[];
 };
 
-export default function ProfileClient({
-  displayName, email, username,
-}: { displayName: string; email: string; username: string | null }) {
+export default function ProfileClient({ displayName, email }: { displayName: string; email: string }) {
   const router = useRouter();
-
-  const [currentUsername, setCurrentUsername] = useState(username);
-  const [usernameInput, setUsernameInput] = useState("");
-  const [usernameError, setUsernameError] = useState<string | null>(null);
 
   const [decks, setDecks] = useState<Deck[]>([]);
   const [deckName, setDeckName] = useState("");
@@ -59,22 +54,6 @@ export default function ProfileClient({
     if (seatFilter) params.set("seat", seatFilter);
     const res = await fetch(`/api/profile/stats?${params.toString()}`);
     if (res.ok) setStats(await res.json());
-  }
-
-  async function handleSetUsername(e: React.FormEvent) {
-    e.preventDefault();
-    setUsernameError(null);
-    const res = await fetch("/api/profile/username", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: usernameInput }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      setUsernameError(typeof data.error === "string" ? data.error : "Couldn't set username");
-      return;
-    }
-    setCurrentUsername(usernameInput);
   }
 
   async function handleAddDeck(e: React.FormEvent) {
@@ -107,27 +86,11 @@ export default function ProfileClient({
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, color: "white" }}>
-      <Link href="/dashboard" style={backLink}>← Dashboard</Link>
+      <Sidebar />
 
-      <div style={{ marginTop: 12, marginBottom: 20 }}>
+      <div style={{ marginTop: 12, marginBottom: 28 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700 }}>{displayName}</h1>
         <p style={{ opacity: 0.6, fontSize: 14 }}>{email}</p>
-        {currentUsername ? (
-          <p style={{ opacity: 0.6, fontSize: 14 }}>@{currentUsername}</p>
-        ) : (
-          <form onSubmit={handleSetUsername} style={{ display: "flex", gap: 8, marginTop: 8 }}>
-            <input
-              placeholder="choose a username"
-              value={usernameInput}
-              onChange={(e) => setUsernameInput(e.target.value.toLowerCase())}
-              required
-              maxLength={24}
-              style={{ ...selectStyle, flex: 1 }}
-            />
-            <button type="submit" style={ghostBtn}>Set</button>
-          </form>
-        )}
-        {usernameError && <p style={{ color: "#e08080", fontSize: 12, marginTop: 4 }}>{usernameError}</p>}
       </div>
 
       <section style={{ marginBottom: 24 }}>
@@ -317,7 +280,6 @@ function BarRow({ label, percent, sub }: { label: string; percent: number; sub: 
   );
 }
 
-const backLink: React.CSSProperties = { color: "#8fbf9f", fontSize: 14, textDecoration: "none" };
 const sectionHeading: React.CSSProperties = { fontSize: 16, fontWeight: 600, marginBottom: 10 };
 const selectStyle: React.CSSProperties = { padding: "8px 10px", borderRadius: 6, border: "1px solid #333", background: "#1a1a1a", color: "white", fontSize: 13 };
 const deckRow: React.CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", borderRadius: 6, background: "#1a1a1a", fontSize: 14 };

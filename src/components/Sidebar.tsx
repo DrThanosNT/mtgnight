@@ -1,71 +1,79 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 
 export default function Sidebar() {
+  const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<{ username: string; displayName: string }[]>([]);
-
-  async function handleSearch(value: string) {
-    setQuery(value);
-    if (value.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    const res = await fetch(`/api/users/search?q=${encodeURIComponent(value)}`);
-    if (res.ok) setResults((await res.json()).results);
-  }
 
   const isDashboard = pathname === "/dashboard";
   const isProfile = pathname === "/profile";
 
-  return (
-    <div style={{ width: 180, flexShrink: 0, padding: "24px 12px", borderRight: "1px solid #262b35", display: "flex", flexDirection: "column", gap: 16 }}>
-      <Link
-        href="/dashboard"
-        style={{ ...navItem, ...(isDashboard ? navItemActive : {}), pointerEvents: isDashboard ? "none" : "auto" }}
-      >
-        Dashboard
-      </Link>
-      <Link
-        href="/profile"
-        style={{ ...navItem, ...(isProfile ? navItemActive : {}), pointerEvents: isProfile ? "none" : "auto" }}
-      >
-        Profile
-      </Link>
+  function go(path: string) {
+    setOpen(false);
+    router.push(path);
+  }
 
-      <div style={{ marginTop: 8 }}>
-        <input
-          placeholder="Find a player…"
-          value={query}
-          onChange={(e) => handleSearch(e.target.value)}
-          style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 6, border: "1px solid #333", background: "#1a1a1a", color: "white", fontSize: 13 }}
-        />
-        {results.length > 0 && (
-          <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-            {results.map((r) => (
+  return (
+    <>
+      <button onClick={() => setOpen(true)} aria-label="Open menu" style={toggleBtnStyle}>
+        ☰
+      </button>
+
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={backdropStyle} />
+          <div style={panelStyle}>
+            <button onClick={() => setOpen(false)} aria-label="Close menu" style={closeBtnStyle}>✕</button>
+
+            <nav style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 40 }}>
               <button
-                key={r.username}
-                onClick={() => { router.push(`/profile/${r.username}`); setQuery(""); setResults([]); }}
-                style={{ textAlign: "left", background: "#1a1a1a", border: "none", color: "white", borderRadius: 6, padding: "6px 8px", fontSize: 13, cursor: "pointer" }}
+                onClick={() => go("/dashboard")}
+                disabled={isDashboard}
+                style={{ ...navItem, ...(isDashboard ? navItemActive : {}) }}
               >
-                {r.displayName} <span style={{ opacity: 0.5 }}>@{r.username}</span>
+                Dashboard
               </button>
-            ))}
+              <button
+                onClick={() => go("/profile")}
+                disabled={isProfile}
+                style={{ ...navItem, ...(isProfile ? navItemActive : {}) }}
+              >
+                Profile
+              </button>
+              <button onClick={() => go("/search")} style={navItem}>
+                Search
+              </button>
+            </nav>
           </div>
-        )}
-      </div>
-    </div>
+        </>
+      )}
+    </>
   );
 }
 
+const toggleBtnStyle: React.CSSProperties = {
+  position: "fixed", top: 16, left: 16, zIndex: 40,
+  width: 40, height: 40, borderRadius: 8, border: "1px solid #333",
+  background: "#1a1a1a", color: "white", fontSize: 18, cursor: "pointer",
+};
+const backdropStyle: React.CSSProperties = {
+  position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 45,
+};
+const panelStyle: React.CSSProperties = {
+  position: "fixed", top: 0, left: 0, bottom: 0, width: 220, zIndex: 50,
+  background: "#111", borderRight: "1px solid #262b35", padding: "16px 12px", boxSizing: "border-box",
+};
+const closeBtnStyle: React.CSSProperties = {
+  position: "absolute", top: 12, right: 12, background: "none", border: "none",
+  color: "white", fontSize: 18, cursor: "pointer",
+};
 const navItem: React.CSSProperties = {
-  padding: "8px 12px", borderRadius: 8, color: "white", textDecoration: "none", fontSize: 14,
+  textAlign: "left", padding: "10px 12px", borderRadius: 8, color: "white",
+  background: "transparent", border: "none", fontSize: 14, width: "100%", cursor: "pointer",
 };
 const navItemActive: React.CSSProperties = {
-  background: "rgba(201,162,39,0.15)", color: "#c9a227", fontWeight: 600,
+  background: "rgba(201,162,39,0.15)", color: "#c9a227", fontWeight: 600, cursor: "default",
 };

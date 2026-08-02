@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Sidebar from "@/components/Sidebar";
 
-type Member = { userId: string; displayName: string; username: string | null; isOwner: boolean; isMe: boolean };
+type Member = { userId: string; displayName: string; isOwner: boolean; isMe: boolean };
 
 export default function GroupDetailClient({
   group,
@@ -72,7 +73,7 @@ export default function GroupDetailClient({
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, color: "white" }}>
-      <Link href="/dashboard" style={backLink}>← Dashboard</Link>
+      <Sidebar />
 
       <div style={{ marginBottom: 24, marginTop: 12 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700 }}>{group.name}</h1>
@@ -101,15 +102,9 @@ export default function GroupDetailClient({
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {members.map((m) => (
             <div key={m.userId} style={memberRow}>
-              {m.username ? (
-                <Link href={`/profile/${m.username}`} style={{ color: "white", textDecoration: "none" }}>
-                  {m.displayName} {m.isMe && <span style={{ opacity: 0.5 }}>(you)</span>}
-                </Link>
-              ) : (
-                <span>
-                  {m.displayName} {m.isMe && <span style={{ opacity: 0.5 }}>(you)</span>}
-                </span>
-              )}
+              <Link href={`/profile/${encodeURIComponent(m.displayName)}`} style={{ color: "white", textDecoration: "none" }}>
+                {m.displayName} {m.isMe && <span style={{ opacity: 0.5 }}>(you)</span>}
+              </Link>
               {m.isOwner && <span style={{ fontSize: 12, opacity: 0.6 }}>Owner</span>}
             </div>
           ))}
@@ -141,9 +136,6 @@ export default function GroupDetailClient({
   );
 }
 
-const backLink: React.CSSProperties = {
-  color: "#8fbf9f", fontSize: 14, textDecoration: "none", display: "inline-block",
-};
 const sectionHeading: React.CSSProperties = { fontSize: 16, fontWeight: 600, marginBottom: 10 };
 const memberRow: React.CSSProperties = {
   display: "flex", justifyContent: "space-between", padding: "8px 12px",
