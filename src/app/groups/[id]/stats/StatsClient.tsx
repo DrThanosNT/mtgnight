@@ -3,318 +3,234 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-type PlayerRow = { userId: string; displayName: string; gamesPlayed: number; wins: number; winRate: number };
-type MemberStats = { gamesPlayed: number; wins: number; winRate: number; decksUsed: { id: string; name: string }[] };
-type TurnRow = { turn: number; count: number; percent: number };
+type Member = { userId: string; displayName: string; username: string | null };
+type PlayerStat = { userId: string; displayName: string; gamesPlayed: number; wins: number; winRate: number };
+type SeatStat = { seat: number; gamesPlayed: number; wins: number; winRate: number };
+type TurnStat = { turn: number; count: number; percent: number };
+type Deck = { id: string; name: string };
 
 export default function StatsClient({ groupId, groupName }: { groupId: string; groupName: string }) {
-  const [allPlayers, setAllPlayers] = useState<{ userId: string; displayName: string }[]>([]);
-  const [players, setPlayers] = useState<PlayerRow[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [playerCount, setPlayerCount] = useState(4);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
 
   const [participantFilter, setParticipantFilter] = useState<Set<string>>(new Set());
+  const [deckFilter, setDeckFilter] = useState<{ userId: string; deckId: string; deckName: string } | null>(null);
+  const [deckPickerFor, setDeckPickerFor] = useState<string | null>(null);
+  const [deckOptions, setDeckOptions] = useState<Deck[]>([]);
+  const [seatAssignments, setSeatAssignments] = useState<Record<number, string>>({});
+
+  const [players, setPlayers] = useState<PlayerStat[]>([]);
+  const [seatWins, setSeatWins] = useState<SeatStat[]>([]);
+  const [turns, setTurns] = useState<TurnStat[]>([]);
 
   useEffect(() => {
-    fetch(`/api/groups/${groupId}/stats`)
-      .then((r) => r.json())
-      .then((data) => setAllPlayers((data.players ?? []).map((p: PlayerRow) => ({ userId: p.userId, displayName: p.displayName }))));
+    Promise.all([
+      fetch(`/api/groups/${groupId}`).then((r) => r.json()),
+      fetch(`/api/groups/${groupId}/members`).then((r) => r.json()),
+    ]).then(([groupData, membersData]) => {
+      setPlayerCount(groupData.playerCount ?? 4);
+      setMembers(membersData.members ?? []);
+    });
   }, [groupId]);
 
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
     participantFilter.forEach((id) => params.append("playerId", id));
+    if (deckFilter) {
+      params.set("deckUserId", deckFilter.userId);
+      params.set("deckId", deckFilter.deckId);
+    }
+    Object.entries(seatAssignments).forEach(([seat, uid]) => {
+      if (uid) params.append("seat", `${uid}:${seat}`);
+    });
     fetch(`/api/groups/${groupId}/stats?${params.toString()}`)
       .then((r) => r.json())
-      .then((data) => setPlayers(data.players ?? []))
+      .then((data) => {
+        setPlayers(data.players ?? []);
+        setSeatWins(data.seatWins ?? []);
+        setTurns(data.turns ?? []);
+      })
       .finally(() => setLoading(false));
-  }, [groupId, participantFilter]);
+  }, [groupId, participantFilter, deckFilter, seatAssignments]);
 
   function toggleParticipant(userId: string) {
     setParticipantFilter((prev) => {
       const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
+      if (next.has(userId)) {
+        next.delete(userId);
+        setSeatAssignments((sa) => {
+          const copy = { ...sa };
+          for (const seat of Object.keys(copy)) {
+            if (copy[Number(seat)] === userId) delete copy[Number(seat)];
+          }
+          return copy;
+        });
+        if (deckFilter?.userId === userId) setDeckFilter(null);
+      } else {
+        next.add(userId);
+      }
       return next;
     });
   }
 
-  function selectAllParticipants() {
-    setParticipantFilter(new Set(allPlayers.map((p) => p.userId)));
+  async function openDeckPicker(userId: string) {
+    if (deckPickerFor === userId) {
+      setDeckPickerFor(null);
+      return;
+    }
+    setDeckPickerFor(userId);
+    const res = await fetch(`/api/groups/${groupId}/members/${userId}/stats`);
+    if (res.ok) setDeckOptions((await res.json()).decksUsed ?? []);
   }
 
-  function clearParticipantFilter() {
-    setParticipantFilter(new Set());
+  function selectDeck(userId: string, deckId: string, deckName: string) {
+    setDeckFilter({ userId, deckId, deckName });
+    setDeckPickerFor(null);
   }
 
-  const filterActive = participantFilter.size > 0;
+  const seatPool = participantFilter.size > 0 ? members.filter((m) => participantFilter.has(m.userId)) : members;
+  const assignedElsewhere = (seat: number) =>
+    new Set(Object.entries(seatAssignments).filter(([s]) => Number(s) !== seat).map(([, uid]) => uid));
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: 24, color: "white" }}>
       <Link href={`/groups/${groupId}`} style={backLink}>← {groupName}</Link>
       <h1 style={{ fontSize: 22, fontWeight: 700, marginTop: 12, marginBottom: 20 }}>{groupName} — stats</h1>
 
-      <section style={{ marginBottom: 20 }}>
-        <h2 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Filter by exact group of players</h2>
-        <p style={{ fontSize: 12, opacity: 0.6, marginBottom: 10 }}>
-          Select players to see stats only for games where exactly this group played — no more, no fewer.
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-          {allPlayers.map((p) => {
-            const selected = participantFilter.has(p.userId);
+      <section style={{ marginBottom: 24 }}>
+        <h2 style={sectionHeading}>Who played</h2>
+        <p style={hint}>Select players for an exact match — games with anyone else, or missing someone selected, are excluded.</p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+          {members.map((m) => {
+            const selected = participantFilter.has(m.userId);
             return (
-              <button
-                key={p.userId}
-                onClick={() => toggleParticipant(p.userId)}
-                style={{
-                  padding: "6px 12px", borderRadius: 20, fontSize: 13, cursor: "pointer",
-                  border: selected ? "1px solid #c9a227" : "1px solid #333",
-                  background: selected ? "rgba(201,162,39,0.15)" : "#1a1a1a",
-                  color: "white",
-                }}
-              >
-                {p.displayName}
+              <button key={m.userId} onClick={() => toggleParticipant(m.userId)} style={pill(selected)}>
+                {m.displayName}
               </button>
             );
           })}
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={selectAllParticipants} style={filterBtn}>Select everyone</button>
-          <button onClick={clearParticipantFilter} style={filterBtn}>Clear filter (show all games)</button>
+          <button onClick={() => setParticipantFilter(new Set(members.map((m) => m.userId)))} style={filterBtn}>Select everyone</button>
+          <button onClick={() => { setParticipantFilter(new Set()); setSeatAssignments({}); }} style={filterBtn}>Clear</button>
         </div>
       </section>
 
-      {loading && <p style={{ opacity: 0.6 }}>Loading…</p>}
-      {!loading && filterActive && players.length === 0 && (
-        <p style={{ opacity: 0.6 }}>This exact group of players has never played together.</p>
-      )}
-      {!loading && !filterActive && players.length === 0 && <p style={{ opacity: 0.6 }}>No games recorded yet.</p>}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {players.map((p) => (
-          <MemberRow
-            key={p.userId}
-            groupId={groupId}
-            player={p}
-            expanded={expanded === p.userId}
-            onToggle={() => setExpanded(expanded === p.userId ? null : p.userId)}
-          />
-        ))}
-      </div>
-
-      <TurnsSection groupId={groupId} players={allPlayers} />
-    </div>
-  );
-}
-
-function MemberRow({
-  groupId,
-  player,
-  expanded,
-  onToggle,
-}: {
-  groupId: string;
-  player: PlayerRow;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const [deckFilter, setDeckFilter] = useState("");
-  const [playedFirstFilter, setPlayedFirstFilter] = useState<"" | "true" | "false">("");
-  const [filtered, setFiltered] = useState<MemberStats | null>(null);
-
-  useEffect(() => {
-    if (!expanded) return;
-    const params = new URLSearchParams();
-    if (deckFilter) params.set("deckId", deckFilter);
-    if (playedFirstFilter) params.set("playedFirst", playedFirstFilter);
-    fetch(`/api/groups/${groupId}/members/${player.userId}/stats?${params.toString()}`)
-      .then((r) => r.json())
-      .then(setFiltered);
-  }, [expanded, deckFilter, playedFirstFilter, groupId, player.userId]);
-
-  return (
-    <div style={{ background: "#1a1a1a", borderRadius: 10, overflow: "hidden" }}>
-      <button onClick={onToggle} style={memberButton}>
-        <span>{player.displayName}</span>
-        <span style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
-          <span style={{ fontSize: 12, opacity: 0.5 }}>{player.gamesPlayed} games</span>
-          <span style={{ fontSize: 15, fontWeight: 700 }}>{(player.winRate * 100).toFixed(0)}%</span>
-        </span>
-      </button>
-
-      {expanded && (
-        <div style={{ padding: "12px 14px", borderTop: "1px solid #262b35" }}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-            <select value={deckFilter} onChange={(e) => setDeckFilter(e.target.value)} style={selectStyle}>
-              <option value="">All decks</option>
-              {filtered?.decksUsed.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-            <select
-              value={playedFirstFilter}
-              onChange={(e) => setPlayedFirstFilter(e.target.value as "" | "true" | "false")}
-              style={selectStyle}
-            >
-              <option value="">Played first: any</option>
-              <option value="true">Played first: yes</option>
-              <option value="false">Played first: no</option>
-            </select>
-          </div>
-          {filtered && (
-            <p style={{ fontSize: 14 }}>
-              <strong>{(filtered.winRate * 100).toFixed(0)}%</strong> win rate — {filtered.wins} wins / {filtered.gamesPlayed} games
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TurnsSection({ groupId, players }: { groupId: string; players: { userId: string; displayName: string }[] }) {
-  const [winnerId, setWinnerId] = useState("");
-  const [deckIds, setDeckIds] = useState<string[]>([]);
-  const [playedFirstFilter, setPlayedFirstFilter] = useState<"" | "true" | "false">("");
-  const [decksOfWinner, setDecksOfWinner] = useState<{ id: string; name: string }[]>([]);
-  const [data, setData] = useState<{ mode: string; total: number; turns: TurnRow[] } | null>(null);
-
-  // Independent exact-set participant filter, mirroring the top section
-  // but scoped only to turn-distribution results.
-  const [participantFilter, setParticipantFilter] = useState<Set<string>>(new Set());
-
-  function toggleParticipant(userId: string) {
-    setParticipantFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
-      return next;
-    });
-  }
-
-  useEffect(() => {
-    if (!winnerId) {
-      setDecksOfWinner([]);
-      setDeckIds([]);
-      return;
-    }
-    fetch(`/api/groups/${groupId}/members/${winnerId}/stats`)
-      .then((r) => r.json())
-      .then((d) => setDecksOfWinner(d.decksUsed ?? []));
-  }, [winnerId, groupId]);
-
-  useEffect(() => {
-    const params = new URLSearchParams();
-    if (winnerId) {
-      params.set("winnerId", winnerId);
-      deckIds.forEach((id) => params.append("deckId", id));
-      if (playedFirstFilter) params.set("playedFirst", playedFirstFilter);
-    }
-    participantFilter.forEach((id) => params.append("playerId", id));
-    fetch(`/api/groups/${groupId}/stats/turns?${params.toString()}`)
-      .then((r) => r.json())
-      .then(setData);
-  }, [groupId, winnerId, deckIds, playedFirstFilter, participantFilter]);
-
-  return (
-    <section style={{ marginTop: 32 }}>
-      <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>
-        Turns games ended on
-      </h2>
-
-      <div style={{ marginBottom: 12 }}>
-        <p style={{ fontSize: 12, opacity: 0.6, marginBottom: 8 }}>
-          Filter to games where exactly this set of players took part:
-        </p>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-          {players.map((p) => {
-            const selected = participantFilter.has(p.userId);
+      <section style={{ marginBottom: 28 }}>
+        <h2 style={sectionHeading}>Assign seats (optional)</h2>
+        <p style={hint}>Leave a seat as "Any" to not constrain it.</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {Array.from({ length: playerCount }, (_, i) => i + 1).map((seat) => {
+            const taken = assignedElsewhere(seat);
             return (
-              <button
-                key={p.userId}
-                onClick={() => toggleParticipant(p.userId)}
-                style={{
-                  padding: "6px 12px", borderRadius: 20, fontSize: 13, cursor: "pointer",
-                  border: selected ? "1px solid #c9a227" : "1px solid #333",
-                  background: selected ? "rgba(201,162,39,0.15)" : "#1a1a1a",
-                  color: "white",
-                }}
-              >
-                {p.displayName}
-              </button>
+              <div key={seat} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 13, width: 60, flexShrink: 0 }}>Seat {seat}</span>
+                <select
+                  value={seatAssignments[seat] ?? ""}
+                  onChange={(e) =>
+                    setSeatAssignments((prev) => {
+                      const next = { ...prev };
+                      if (e.target.value) next[seat] = e.target.value;
+                      else delete next[seat];
+                      return next;
+                    })
+                  }
+                  style={selectStyle}
+                >
+                  <option value="">Any</option>
+                  {seatPool.filter((m) => !taken.has(m.userId)).map((m) => (
+                    <option key={m.userId} value={m.userId}>{m.displayName}</option>
+                  ))}
+                </select>
+              </div>
             );
           })}
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button onClick={() => setParticipantFilter(new Set(players.map((p) => p.userId)))} style={filterBtn}>
-            Select everyone
-          </button>
-          <button onClick={() => setParticipantFilter(new Set())} style={filterBtn}>
-            Clear filter
-          </button>
+      </section>
+
+      {deckFilter && (
+        <div style={{ marginBottom: 16, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ opacity: 0.7 }}>Deck filter: {deckFilter.deckName}</span>
+          <button onClick={() => setDeckFilter(null)} style={filterBtn}>Clear</button>
         </div>
-      </div>
+      )}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <select value={winnerId} onChange={(e) => setWinnerId(e.target.value)} style={selectStyle}>
-          <option value="">All games</option>
+      <section style={{ marginBottom: 28 }}>
+        <h2 style={sectionHeading}>Win rate</h2>
+        {loading && <p style={hint}>Loading…</p>}
+        {!loading && players.length === 0 && <p style={hint}>No games match this filter.</p>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {players.map((p) => (
-            <option key={p.userId} value={p.userId}>Filter by who won: {p.displayName}</option>
-          ))}
-        </select>
-        {winnerId && (
-          <>
-            <select
-              multiple
-              value={deckIds}
-              onChange={(e) => setDeckIds(Array.from(e.target.selectedOptions, (o) => o.value))}
-              style={{ ...selectStyle, minWidth: 140 }}
-            >
-              {decksOfWinner.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
-            <select
-              value={playedFirstFilter}
-              onChange={(e) => setPlayedFirstFilter(e.target.value as "" | "true" | "false")}
-              style={selectStyle}
-            >
-              <option value="">Played first: any</option>
-              <option value="true">Played first: yes</option>
-              <option value="false">Played first: no</option>
-            </select>
-          </>
-        )}
-      </div>
-
-      {!data && <p style={{ opacity: 0.6, fontSize: 14 }}>Loading…</p>}
-      {data && data.turns.length === 0 && <p style={{ opacity: 0.6, fontSize: 14 }}>No games match this filter.</p>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {data?.turns.map((t) => (
-          <div key={t.turn} style={{ display: "flex", alignItems: "center", gap: 10, background: "#1a1a1a", borderRadius: 6, padding: "8px 12px" }}>
-            <span style={{ fontSize: 13, width: 56, flexShrink: 0 }}>Turn {t.turn}</span>
-            <div style={{ flex: 1, height: 6, background: "#262b35", borderRadius: 3, overflow: "hidden" }}>
-              <div style={{ width: `${t.percent}%`, height: "100%", background: "#c9a227" }} />
+            <div key={p.userId} style={{ background: "#1a1a1a", borderRadius: 10, padding: "10px 14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <button onClick={() => openDeckPicker(p.userId)} style={{ background: "none", border: "none", color: "white", cursor: "pointer", fontSize: 14, padding: 0 }}>
+                  {p.displayName} <span style={{ opacity: 0.5, fontSize: 12 }}>(deck ▾)</span>
+                </button>
+                <span style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                  <span style={{ fontSize: 12, opacity: 0.5 }}>{p.gamesPlayed} games</span>
+                  <span style={{ fontSize: 15, fontWeight: 700 }}>{(p.winRate * 100).toFixed(0)}%</span>
+                </span>
+              </div>
+              {deckPickerFor === p.userId && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {deckOptions.length === 0 && <span style={{ fontSize: 12, opacity: 0.6 }}>No decks recorded for them here.</span>}
+                  {deckOptions.map((d) => (
+                    <button key={d.id} onClick={() => selectDeck(p.userId, d.id, d.name)} style={filterBtn}>{d.name}</button>
+                  ))}
+                </div>
+              )}
             </div>
-            <span style={{ fontSize: 13, width: 44, textAlign: "right", flexShrink: 0 }}>{t.percent.toFixed(0)}%</span>
-          </div>
-        ))}
+          ))}
+        </div>
+      </section>
+
+      <section style={{ marginBottom: 28 }}>
+        <h2 style={sectionHeading}>Win rate by seat</h2>
+        {seatWins.every((s) => s.gamesPlayed === 0) && <p style={hint}>No games match this filter.</p>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {seatWins.map((s) => (
+            <BarRow key={s.seat} label={`Seat ${s.seat}`} percent={s.winRate * 100} sub={`${s.gamesPlayed} games`} />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <h2 style={sectionHeading}>Turns games ended on</h2>
+        {turns.length === 0 && <p style={hint}>No games with a recorded turn count match this filter.</p>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {turns.map((t) => (
+            <BarRow key={t.turn} label={`Turn ${t.turn}`} percent={t.percent} sub={`${t.count} games`} />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BarRow({ label, percent, sub }: { label: string; percent: number; sub: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#1a1a1a", borderRadius: 6, padding: "8px 12px" }}>
+      <span style={{ fontSize: 13, width: 70, flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, height: 6, background: "#262b35", borderRadius: 3, overflow: "hidden" }}>
+        <div style={{ width: `${percent}%`, height: "100%", background: "#c9a227" }} />
       </div>
-    </section>
+      <span style={{ fontSize: 12, opacity: 0.6, width: 60, textAlign: "right", flexShrink: 0 }}>{sub}</span>
+      <span style={{ fontSize: 13, width: 40, textAlign: "right", flexShrink: 0 }}>{percent.toFixed(0)}%</span>
+    </div>
   );
 }
 
 const backLink: React.CSSProperties = { color: "#8fbf9f", fontSize: 14, textDecoration: "none" };
-const memberButton: React.CSSProperties = {
-  width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center",
-  padding: "12px 14px", background: "transparent", border: "none", color: "white", cursor: "pointer", fontSize: 14,
-};
-const selectStyle: React.CSSProperties = {
-  padding: "8px 10px", borderRadius: 6, border: "1px solid #333",
-  background: "#111", color: "white", fontSize: 13,
-};
-const filterBtn: React.CSSProperties = {
-  padding: "8px 14px", borderRadius: 8, border: "1px solid #444",
-  background: "transparent", color: "#8fbf9f", fontSize: 13, cursor: "pointer",
-};
+const sectionHeading: React.CSSProperties = { fontSize: 15, fontWeight: 600, marginBottom: 8 };
+const hint: React.CSSProperties = { fontSize: 12, opacity: 0.6, marginBottom: 10 };
+const selectStyle: React.CSSProperties = { padding: "6px 10px", borderRadius: 6, border: "1px solid #333", background: "#111", color: "white", fontSize: 13, flex: 1 };
+const filterBtn: React.CSSProperties = { padding: "6px 12px", borderRadius: 8, border: "1px solid #444", background: "transparent", color: "#8fbf9f", fontSize: 12, cursor: "pointer" };
+function pill(selected: boolean): React.CSSProperties {
+  return {
+    padding: "6px 12px", borderRadius: 20, fontSize: 13, cursor: "pointer",
+    border: selected ? "1px solid #c9a227" : "1px solid #333",
+    background: selected ? "rgba(201,162,39,0.15)" : "#1a1a1a", color: "white",
+  };
+}

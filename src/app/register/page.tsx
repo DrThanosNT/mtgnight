@@ -20,6 +20,7 @@ function RegisterForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -30,7 +31,7 @@ function RegisterForm() {
     const res = await fetch("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, displayName }),
+      body: JSON.stringify({ email, password, displayName, username }),
     });
     setLoading(false);
     if (!res.ok) {
@@ -50,7 +51,19 @@ function RegisterForm() {
       <form onSubmit={handleSubmit} style={form}>
         <label style={label}>
           Display name
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required style={input} />
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} required maxLength={40} style={input} />
+        </label>
+        <label style={label}>
+          Username
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value.toLowerCase())}
+            required
+            maxLength={24}
+            pattern="[a-z0-9_]{3,24}"
+            title="3-24 lowercase letters, numbers, underscores"
+            style={input}
+          />
         </label>
         <label style={label}>
           Email

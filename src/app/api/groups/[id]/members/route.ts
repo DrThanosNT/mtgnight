@@ -13,10 +13,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   const members = await prisma.groupMember.findMany({
     where: { groupId: id, leftAt: null },
-    include: { user: { select: { id: true, displayName: true } } },
+    include: { user: { select: { id: true, displayName: true, username: true } } },
   });
 
   return NextResponse.json({
-    members: members.map((m) => ({ userId: m.user.id, displayName: m.user.displayName })),
+    members: members.map((m) => ({ userId: m.user.id, displayName: m.user.displayName, username: m.user.username })),
   });
 }

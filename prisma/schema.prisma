@@ -46,20 +46,7 @@ enum Format {
   MOMIR_BASIC
 }
 
-model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  displayName  String
-  createdAt    DateTime @default(now())
 
-  sessions     Session[]
-  decks        Deck[]
-  groupMembers GroupMember[]
-  gamePlayers  GamePlayer[]
-  sentInvites  GroupInvite[] @relation("InviteSender")
-  ownedGroups  Group[]       @relation("GroupOwner")
-}
 
 model Session {
   id        String   @id @default(cuid())
@@ -169,4 +156,19 @@ model LoginAttempt {
   failedCount Int       @default(0)
   lockedUntil DateTime?
   updatedAt   DateTime  @updatedAt
+}
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String?  @unique
+  passwordHash String
+  displayName  String
+  createdAt    DateTime @default(now())
+
+  sessions     Session[]
+  decks        Deck[]
+  groupMembers GroupMember[]
+  gamePlayers  GamePlayer[]
+  sentInvites  GroupInvite[] @relation("InviteSender")
+  ownedGroups  Group[]       @relation("GroupOwner")
 }

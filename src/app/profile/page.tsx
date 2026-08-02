@@ -6,5 +6,5 @@ export default async function ProfilePage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  return <ProfileClient displayName={user.displayName} email={user.email} />;
+  return <ProfileClient displayName={user.displayName} email={user.email} username={user.username} />;
 }

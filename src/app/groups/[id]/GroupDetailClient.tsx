@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-type Member = { userId: string; displayName: string; isOwner: boolean; isMe: boolean };
+type Member = { userId: string; displayName: string; username: string | null; isOwner: boolean; isMe: boolean };
 
 export default function GroupDetailClient({
   group,
@@ -101,9 +101,15 @@ export default function GroupDetailClient({
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {members.map((m) => (
             <div key={m.userId} style={memberRow}>
-              <span>
-                {m.displayName} {m.isMe && <span style={{ opacity: 0.5 }}>(you)</span>}
-              </span>
+              {m.username ? (
+                <Link href={`/profile/${m.username}`} style={{ color: "white", textDecoration: "none" }}>
+                  {m.displayName} {m.isMe && <span style={{ opacity: 0.5 }}>(you)</span>}
+                </Link>
+              ) : (
+                <span>
+                  {m.displayName} {m.isMe && <span style={{ opacity: 0.5 }}>(you)</span>}
+                </span>
+              )}
               {m.isOwner && <span style={{ fontSize: 12, opacity: 0.6 }}>Owner</span>}
             </div>
           ))}
