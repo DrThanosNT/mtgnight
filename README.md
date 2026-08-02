@@ -1,95 +1,370 @@
-# MTG Night — Playgroup Life Counter, Deck Tracker & Stats
+# MTG Night
 
-A mobile-first PWA for Magic: The Gathering playgroups. Log in, form a group, track decks, and use a Lifetap-style shared-screen life counter during games — with every game automatically feeding into group and personal win-rate stats.
+### Playgroup life tracking, deck management & deep game statistics.
 
-## Table of Contents
+Commander · Modern · Standard · 30+ formats — one shared-screen life counter, your playgroup, your stats.
 
-- [About](#about)
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Setup](#setup)
-- [Project Structure](#project-structure)
-- [Card Art Integration](#card-art-integration)
-- [Deployment](#deployment)
-- [License](#license)
+**Live Demo →** *(add deployed URL)*
 
-## About
+**Deploy with Vercel**
 
-MTG Night replaces a stack of physical dice and a mental tally of who's winning with a single shared phone screen. Create a group tied to a format (Commander, Modern, Standard, etc.), invite your playgroup, track decks, and record games — the app handles seating order, first-player selection, life totals, commander damage, and all the usual counters (poison, energy, experience, treasure, and more), then turns every recorded game into filterable win-rate and turn-length stats for the group and for each player individually.
+License: MIT • Next.js • TypeScript • PostgreSQL • Prisma • PWA
 
-## Features
+---
 
-- **Accounts & sessions** — email/password auth with server-side sessions, rate-limited login (5 attempts, 60s lockout)
-- **Groups** — format-locked (player count and starting life follow the format), invite-link based, capped at 6 members, soft-leave so historical stats stay intact even after someone leaves
-- **Decks** — lightweight, name + format, owned per-player and reusable across any group of matching format
-- **Card art backgrounds** — search real Magic cards via the Scryfall API and set one as a deck's background art, shown behind that player's life total during games
-- **Shared-screen life counter** — Lifetap-style board that adapts its layout (and rotates seats to face the right direction) for 2–6 players, with:
-  - Tap for ±1 life, hold for ±10, haptic feedback, and a running change indicator
-  - Poison, radiation, energy, experience, treasure, commander tax, and storm counters
-  - Per-source commander damage that also deducts from life
-  - Dice roll or manual pick for who goes first, drag-to-reorder seating
-- **Stats** — win rate by player, by seat order (does going first matter?), by deck, and turn-length distribution — filterable by group, deck, and played-first, both at the group level and on a personal profile aggregating across every group
-- **Casual mode** — play without a group; nothing is saved
-- **Installable PWA** — works like a native app once added to your home screen
+# Overview
 
-## Tech Stack
+Keep your entire Magic playgroup in one place.
 
-- [Next.js](https://nextjs.org) (App Router) + TypeScript
-- [Prisma](https://www.prisma.io) ORM + PostgreSQL ([Neon](https://neon.tech))
-- Session-based auth (database-backed sessions, not JWT)
-- [Scryfall API](https://scryfall.com/docs/api) for card art
-- Deployed on [Vercel](https://vercel.com)
+Create a group, invite friends, register decks with real Magic card artwork, and launch a shared-screen life counter inspired by Lifetap. Every game is automatically recorded, producing detailed statistics for both your group and every individual player.
 
-## Getting Started
+> **Screenshot needed:** Dashboard / Group overview
 
-### Prerequisites
+---
 
-- Node.js 20+
-- A PostgreSQL database (local via Docker, or a hosted instance like Neon)
+# Shared-Screen Life Counter
 
-### Setup
+> **Screenshot needed:** In-game 4-player life counter
+
+Designed for phones placed in the middle of the table.
+
+Features include:
+
+- Adaptive layouts for **2–6 players**
+- Full-screen tap zones for ±1 life
+- Hold for repeating ±10
+- Haptic feedback
+- Running life change indicators
+- White tap flash animations
+- Mid-game seat swapping
+- Drag-to-reorder turn order
+- Dice roll or manual first-player selection
+- Automatic scaling so every seat remains readable
+
+Supports:
+
+- Poison
+- Radiation
+- Energy
+- Experience
+- Treasure
+- Storm
+- Commander Tax
+
+---
+
+# Commander Support
+
+> **Screenshot needed:** Commander damage tracker
+
+Commander games include:
+
+- Commander selection
+- Optional Partner commander
+- Independent commander damage tracking
+- Separate 21-damage lethal tracking for each commander
+- Editable deck commanders from the player profile
+
+Deck backgrounds can use real Magic artwork directly from Scryfall.
+
+---
+
+# Groups
+
+> **Screenshot needed:** Group page
+
+Create permanent playgroups with:
+
+- Invite links
+- Format locking
+- Automatic starting life
+- Maximum 6 members
+- Historical member retention
+- Play with any subset of active members (minimum 2)
+
+Supported formats include:
+
+- Commander
+- Modern
+- Standard
+- Pioneer
+- Pauper
+- Legacy
+- Vintage
+
+…and roughly 30 additional official formats.
+
+---
+
+# Deck Library
+
+> **Screenshot needed:** Deck management page
+
+Each player maintains their own reusable deck collection.
+
+Features:
+
+- Deck name
+- Format
+- Commander
+- Partner
+- Background artwork
+- Reusable across compatible groups
+
+Background artwork is pulled directly from Scryfall's `art_crop` endpoint.
+
+---
+
+# Statistics
+
+> **Screenshot needed:** Stats page
+
+Every recorded game contributes to a statistics engine.
+
+Filter simultaneously by:
+
+- Exact participating players
+- Seat assignments
+- Individual deck
+
+View:
+
+- Overall win rate
+- Win rate by seat
+- Turn length distribution
+- Deck performance
+- Personal statistics across every group
+
+Statistics exist at both:
+
+- Group level
+- Player profile level
+
+---
+
+# Player Profiles
+
+> **Screenshot needed:** Public profile
+
+Search for any player and view:
+
+- Lifetime statistics
+- Deck performance
+- Win rates
+- Filtered game history
+
+Profiles aggregate games across every group.
+
+---
+
+# Casual Mode
+
+> **Screenshot needed:** Casual game
+
+Launch the life counter without creating a group.
+
+Perfect for quick games where statistics are unnecessary.
+
+Nothing is saved.
+
+---
+
+# Architecture
+
+> **Architecture diagram needed**
+
+```
+                   Scryfall API
+                        │
+                        ▼
+                 Card artwork search
+                        │
+                        ▼
+ Next.js (App Router) ─────► Prisma ORM ─────► PostgreSQL (Neon)
+        │                                        ▲
+        │                                        │
+        ▼                                        │
+ Shared Screen PWA                      Session Storage
+        │
+        ▼
+     Vercel
+```
+
+Everything is written in TypeScript using the Next.js App Router.
+
+The application uses:
+
+- Database-backed sessions
+- Prisma ORM
+- PostgreSQL
+- Scryfall API
+- Progressive Web App support
+
+---
+
+# Setup
+
+## Prerequisites
+
+| Service | Required | Notes |
+|---------|----------|------|
+| Node.js 20+ | ✓ | |
+| PostgreSQL | ✓ | Local or Neon |
+| Vercel | optional | Deployment |
+
+---
+
+## 1 — Clone
 
 ```bash
 git clone https://github.com/yourusername/mtg-night.git
+
 cd mtg-night
+
 npm install
 ```
 
-Create a `.env` file in the project root:
+---
 
+## 2 — Environment Variables
+
+Create `.env`
+
+```env
 DATABASE_URL=postgresql://user:password@localhost:5432/mtg_night
+
 SESSION_COOKIE_NAME=mtg_session
+
 SESSION_TTL_DAYS=30
+```
 
+---
 
-Run migrations and start the dev server:
+## 3 — Database
+
+Run Prisma migrations.
 
 ```bash
 npx prisma migrate dev
+```
+
+---
+
+## 4 — Development
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Note: the app restricts access to mobile user agents — use your browser's device toolbar (or a real phone) to test.
+Open
 
-## Project Structure
+```
+http://localhost:3000
+```
 
-prisma/schema.prisma Data model: users, sessions, groups, decks, games
-src/lib/ Auth, Prisma client, group-membership helpers, format metadata
-src/app/api/ All API routes
-src/app/(pages) Dashboard, group detail/stats, profile, casual play, invite landing
-src/components/LifeCounter.tsx The shared-screen life counter itself
+> The application is mobile-first and only allows mobile user agents. Use your browser's mobile device toolbar or test on a real phone.
 
+---
 
-## Card Art Integration
+# Project Structure
 
-Deck background art is powered by the [Scryfall API](https://scryfall.com/docs/api), which is free, requires no API key, and is explicitly built for third-party Magic apps. Search results return each card's `art_crop` image — just the illustration, no card frame or text — hotlinked directly from Scryfall's CDN rather than stored on our own servers.
+```
+prisma/
+└── schema.prisma
 
-## Deployment
+src/
+├── app/
+│   ├── api/
+│   └── (pages)/
+├── components/
+│   ├── LifeCounter.tsx
+│   └── Sidebar.tsx
+└── lib/
+```
 
-Deployed on Vercel with Postgres hosted on Neon. Push to `main` to trigger a deploy; run `npx prisma migrate deploy` against the production database after any schema change.
+### Main Components
 
-## License
+**LifeCounter**
 
-This project is provided for personal and educational use.
+Shared-screen gameplay interface.
+
+**Sidebar**
+
+Navigation, player search and account management.
+
+**API**
+
+Authentication, groups, decks, games, statistics and search.
+
+**lib**
+
+Authentication helpers, Prisma client, group membership logic and format metadata.
+
+---
+
+# Card Art
+
+Magic artwork is provided by the **Scryfall API**.
+
+Players search for a card when editing a deck.
+
+The application stores the selected artwork URL and displays the card's `art_crop` image as the deck background during games.
+
+No artwork is stored locally.
+
+---
+
+# Authentication
+
+Database-backed session authentication.
+
+Features include:
+
+- Server-side sessions
+- Secure cookies
+- Rate limited login
+- Five failed attempts
+- Sixty second lockout
+
+JWTs are not used.
+
+---
+
+# Deployment
+
+Deploy to **Vercel** using a PostgreSQL database hosted on **Neon**.
+
+Environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| DATABASE_URL | PostgreSQL connection string |
+| SESSION_COOKIE_NAME | Session cookie name |
+| SESSION_TTL_DAYS | Session lifetime |
+
+After deploying:
+
+```bash
+npx prisma migrate deploy
+```
+
+Pushes to `main` automatically trigger new deployments on Vercel.
+
+---
+
+# Tech Stack
+
+- Next.js (App Router)
+- TypeScript
+- Prisma
+- PostgreSQL
+- Neon
+- Vercel
+- Scryfall API
+- Progressive Web App
+
+---
+
+# License
+
+MIT
