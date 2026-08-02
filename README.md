@@ -4,74 +4,22 @@
 
 Commander · Modern · Standard · 30+ formats — one shared-screen life counter, your playgroup, your stats.
 
-**Live Demo →** *(add deployed URL)*
+**Live Demo →** *mtgnightapp.vercel.app*
 
 **Deploy with Vercel**
-
-License: MIT • Next.js • TypeScript • PostgreSQL • Prisma • PWA
 
 ---
 
 # Overview
 
-Keep your entire Magic playgroup in one place.
+Keep your entire MagicTheGathering playgroup in one place.
 
-Create a group, invite friends, register decks with real Magic card artwork, and launch a shared-screen life counter inspired by Lifetap. Every game is automatically recorded, producing detailed statistics for both your group and every individual player.
-
-> **Screenshot needed:** Dashboard / Group overview
+Create a group, invite friends and play! Every game is automatically recorded, producing detailed statistics for both your group and every individual player.
 
 ---
 
-# Shared-Screen Life Counter
-
-> **Screenshot needed:** In-game 4-player life counter
-
-Designed for phones placed in the middle of the table.
-
-Features include:
-
-- Adaptive layouts for **2–6 players**
-- Full-screen tap zones for ±1 life
-- Hold for repeating ±10
-- Haptic feedback
-- Running life change indicators
-- White tap flash animations
-- Mid-game seat swapping
-- Drag-to-reorder turn order
-- Dice roll or manual first-player selection
-- Automatic scaling so every seat remains readable
-
-Supports:
-
-- Poison
-- Radiation
-- Energy
-- Experience
-- Treasure
-- Storm
-- Commander Tax
-
----
-
-# Commander Support
-
-> **Screenshot needed:** Commander damage tracker
-
-Commander games include:
-
-- Commander selection
-- Optional Partner commander
-- Independent commander damage tracking
-- Separate 21-damage lethal tracking for each commander
-- Editable deck commanders from the player profile
-
-Deck backgrounds can use real Magic artwork directly from Scryfall.
-
----
 
 # Groups
-
-> **Screenshot needed:** Group page
 
 Create permanent playgroups with:
 
@@ -96,28 +44,8 @@ Supported formats include:
 
 ---
 
-# Deck Library
-
-> **Screenshot needed:** Deck management page
-
-Each player maintains their own reusable deck collection.
-
-Features:
-
-- Deck name
-- Format
-- Commander
-- Partner
-- Background artwork
-- Reusable across compatible groups
-
-Background artwork is pulled directly from Scryfall's `art_crop` endpoint.
-
----
 
 # Statistics
-
-> **Screenshot needed:** Stats page
 
 Every recorded game contributes to a statistics engine.
 
@@ -144,8 +72,6 @@ Statistics exist at both:
 
 # Player Profiles
 
-> **Screenshot needed:** Public profile
-
 Search for any player and view:
 
 - Lifetime statistics
@@ -157,48 +83,13 @@ Profiles aggregate games across every group.
 
 ---
 
-# Casual Mode
-
-> **Screenshot needed:** Casual game
-
-Launch the life counter without creating a group.
-
-Perfect for quick games where statistics are unnecessary.
-
-Nothing is saved.
-
----
 
 # Architecture
 
-> **Architecture diagram needed**
+![Architecture Diagram](./screenshots/diagram.png)
 
-```
-                   Scryfall API
-                        │
-                        ▼
-                 Card artwork search
-                        │
-                        ▼
- Next.js (App Router) ─────► Prisma ORM ─────► PostgreSQL (Neon)
-        │                                        ▲
-        │                                        │
-        ▼                                        │
- Shared Screen PWA                      Session Storage
-        │
-        ▼
-     Vercel
-```
 
 Everything is written in TypeScript using the Next.js App Router.
-
-The application uses:
-
-- Database-backed sessions
-- Prisma ORM
-- PostgreSQL
-- Scryfall API
-- Progressive Web App support
 
 ---
 
@@ -217,7 +108,7 @@ The application uses:
 ## 1 — Clone
 
 ```bash
-git clone https://github.com/yourusername/mtg-night.git
+git clone https://github.com/DrThanosNT/mtg-night.git
 
 cd mtg-night
 
@@ -282,26 +173,6 @@ src/
 └── lib/
 ```
 
-### Main Components
-
-**LifeCounter**
-
-Shared-screen gameplay interface.
-
-**Sidebar**
-
-Navigation, player search and account management.
-
-**API**
-
-Authentication, groups, decks, games, statistics and search.
-
-**lib**
-
-Authentication helpers, Prisma client, group membership logic and format metadata.
-
----
-
 # Card Art
 
 Magic artwork is provided by the **Scryfall API**.
@@ -323,8 +194,6 @@ Features include:
 - Server-side sessions
 - Secure cookies
 - Rate limited login
-- Five failed attempts
-- Sixty second lockout
 
 JWTs are not used.
 
@@ -367,4 +236,6 @@ Pushes to `main` automatically trigger new deployments on Vercel.
 
 # License
 
-MIT
+This project is provided for educational and demonstration purposes.
+
+It is not licensed for commercial use without explicit permission from the author.
