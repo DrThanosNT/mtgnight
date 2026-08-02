@@ -86,13 +86,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     winRate: Number(r.gamesPlayed) > 0 ? Number(r.wins) / Number(r.gamesPlayed) : 0,
   }));
 
+  // If a specific set of players was selected, that count IS the number of
+  // seats that could possibly exist in a matching game (exact-set filter
+  // guarantees every matching game had exactly that many players) - show
+  // only that many seats rather than always the group's full player count.
+  const seatCount = playerIds.length > 0 ? playerIds.length : group.playerCount;
+
+  const totalSeatGames = seatRows.reduce((sum, r) => sum + Number(r.gamesPlayed), 0);
   const seatByOrder = new Map(seatRows.map((r) => [r.seatOrder, r]));
-  const seatWins = Array.from({ length: group.playerCount }, (_, i) => {
-    const row = seatByOrder.get(i);
-    const gamesPlayed = row ? Number(row.gamesPlayed) : 0;
-    const wins = row ? Number(row.wins) : 0;
-    return { seat: i + 1, gamesPlayed, wins, winRate: gamesPlayed > 0 ? wins / gamesPlayed : 0 };
-  });
+
+  // No games at all match the current filter combination - show nothing
+  // rather than a full column of 0%/0-games rows.
+  const seatWins =
+    totalSeatGames === 0
+      ? []
+      : Array.from({ length: seatCount }, (_, i) => {
+          const row = seatByOrder.get(i);
+          const gamesPlayed = row ? Number(row.gamesPlayed) : 0;
+          const wins = row ? Number(row.wins) : 0;
+          return { seat: i + 1, gamesPlayed, wins, winRate: gamesPlayed > 0 ? wins / gamesPlayed : 0 };
+        });
 
   const totalTurnGames = turnRows.reduce((sum, r) => sum + Number(r.count), 0);
   const maxTurn = turnRows.length > 0 ? Math.max(...turnRows.map((r) => r.turnCount)) : 0;

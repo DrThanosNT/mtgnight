@@ -32,9 +32,6 @@ type SeatPlayer = {
 type PlayerState = SeatPlayer & {
   life: number;
   counters: Record<CounterType, number>;
-  // Keyed by `${sourcePlayerId}::main` or `${sourcePlayerId}::partner` -
-  // each commander (including a partner) tracks its own 21-damage lethal
-  // threshold independently, matching the real rule.
   commanderDamageTaken: Record<string, number>;
 };
 
@@ -667,22 +664,16 @@ function RotatableBlock({ rotation, children }: { rotation: 0 | 90 | 180 | 270; 
   );
 }
 
-// ---------- Tap-vs-hold life button ----------
-// No fill anymore - just a shadowed glyph. Fires onActiveChange(true/false)
-// so the parent can flash that half of the card white while pressed/held.
+// ---------- Full-half tap zone: covers the entire left or right side of the
+// card's middle area. Tap = ±1, hold past 2s = ±10 repeating every 2s.
+// Flashes white while pressed/held. Both zones are flex siblings in one
+// row, so they're always visually on the same line as each other. ----------
 
 const HOLD_THRESHOLD_MS = 500;
 const HOLD_REPEAT_MS = 500;
 
-function LifeButton({
-  sign,
-  onChange,
-  onActiveChange,
-}: {
-  sign: 1 | -1;
-  onChange: (delta: number) => void;
-  onActiveChange: (active: boolean) => void;
-}) {
+function LifeZone({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) => void }) {
+  const [flash, setFlash] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const holdTriggeredRef = useRef(false);
@@ -695,10 +686,9 @@ function LifeButton({
 
   function start(e: React.PointerEvent) {
     e.preventDefault();
-    e.stopPropagation();
     if (activeRef.current) return;
     activeRef.current = true;
-    onActiveChange(true);
+    setFlash(true);
     holdTriggeredRef.current = false;
     timeoutRef.current = setTimeout(() => {
       holdTriggeredRef.current = true;
@@ -707,11 +697,10 @@ function LifeButton({
     }, HOLD_THRESHOLD_MS);
   }
 
-  function end(e: React.PointerEvent) {
-    e.stopPropagation();
+  function end() {
     if (!activeRef.current) return;
     activeRef.current = false;
-    onActiveChange(false);
+    setFlash(false);
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -731,9 +720,26 @@ function LifeButton({
       onPointerUp={end}
       onPointerLeave={end}
       onPointerCancel={end}
-      style={{ ...lifeButtonStyle, touchAction: "none" }}
+      style={{
+        flex: 1, position: "relative", border: "none", background: "transparent",
+        touchAction: "none", cursor: "pointer", display: "flex", alignItems: "center",
+        justifyContent: sign === -1 ? "flex-start" : "flex-end", padding: "0 10px", boxSizing: "border-box",
+      }}
     >
-      {sign === 1 ? "+" : "–"}
+      <div
+        style={{
+          position: "absolute", inset: 0, background: "white",
+          opacity: flash ? 0.22 : 0, transition: "opacity 120ms ease-out", pointerEvents: "none",
+        }}
+      />
+      <span
+        style={{
+          fontSize: "clamp(28px, 9vmin, 44px)", fontWeight: 700, color: "white",
+          filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.6))", position: "relative", zIndex: 1,
+        }}
+      >
+        {sign === 1 ? "+" : "–"}
+      </span>
     </button>
   );
 }
@@ -769,9 +775,6 @@ function PlayerBlockContent({
   const [delta, setDelta] = useState<number | null>(null);
   const deltaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [flashLeft, setFlashLeft] = useState(false);
-  const [flashRight, setFlashRight] = useState(false);
-
   function handleLifeChange(amount: number) {
     onLifeChange(amount);
     setDelta((prev) => (prev === null ? amount : prev + amount));
@@ -792,10 +795,10 @@ function PlayerBlockContent({
 
   const panelOpen = panel !== "none";
 
-  // Build the list of commander sources across all opponents: one row for
-  // each opponent's main commander, plus a second row if they have a
-  // partner. Falls back to the opponent's own name if no commander name
-  // was ever set (e.g. a casual game where the field was left blank).
+  // Falls back to the opponent's own player name if no commander name was
+  // ever set on their deck (e.g. a casual game, or a deck saved before a
+  // commander was filled in) - so there's always a legible label rather
+  // than a blank entry.
   const commanderRows: { key: string; label: string; color: string }[] = [];
   for (const opp of opponents) {
     commanderRows.push({ key: mainKey(opp.id), label: opp.commanderName || opp.name, color: opp.color });
@@ -818,23 +821,6 @@ function PlayerBlockContent({
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
-      {/* Flash overlays - left/right halves, white, fade in while a button
-          is pressed/held, fade back out on release. */}
-      <div
-        style={{
-          position: "absolute", top: 0, bottom: 0, left: 0, width: "50%",
-          background: "white", opacity: flashLeft ? 0.22 : 0,
-          transition: "opacity 120ms ease-out", pointerEvents: "none", zIndex: 1,
-        }}
-      />
-      <div
-        style={{
-          position: "absolute", top: 0, bottom: 0, right: 0, width: "50%",
-          background: "white", opacity: flashRight ? 0.22 : 0,
-          transition: "opacity 120ms ease-out", pointerEvents: "none", zIndex: 1,
-        }}
-      />
-
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 8px 0", flexShrink: 0, zIndex: 2 }}>
           <button
@@ -877,7 +863,14 @@ function PlayerBlockContent({
           )}
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, position: "relative", zIndex: 2 }}>
+        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+          {!panelOpen && (
+            <div style={{ position: "absolute", inset: 0, display: "flex" }}>
+              <LifeZone sign={-1} onChange={handleLifeChange} />
+              <LifeZone sign={1} onChange={handleLifeChange} />
+            </div>
+          )}
+
           {!panelOpen && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
               <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -927,7 +920,7 @@ function PlayerBlockContent({
             <div style={{ position: "absolute", inset: "0 8px 8px 8px", overflowY: "auto" }}>
               <div style={{ ...styles.counterGrid, gridTemplateColumns: "1fr" }}>
                 {commanderRows.length === 0 && (
-                  <p style={{ fontSize: 12, opacity: 0.6, padding: 4 }}>No opponents with a set commander yet.</p>
+                  <p style={{ fontSize: 12, opacity: 0.6, padding: 4 }}>No opponents in this game.</p>
                 )}
                 {commanderRows.map((row) => {
                   const dmg = player.commanderDamageTaken[row.key] ?? 0;
@@ -954,17 +947,6 @@ function PlayerBlockContent({
           )}
         </div>
       </div>
-
-      {!panelOpen && (
-        <>
-          <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
-            <LifeButton sign={-1} onChange={handleLifeChange} onActiveChange={setFlashLeft} />
-          </div>
-          <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
-            <LifeButton sign={1} onChange={handleLifeChange} onActiveChange={setFlashRight} />
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -1049,14 +1031,6 @@ const subtextStyle: React.CSSProperties = {
 };
 
 // ---------- Styles ----------
-
-const lifeButtonStyle: React.CSSProperties = {
-  width: "clamp(44px, 13vmin, 60px)", height: "clamp(44px, 13vmin, 60px)",
-  border: "none", background: "transparent",
-  fontSize: "clamp(24px, 8vmin, 36px)", fontWeight: 700, color: "white",
-  cursor: "pointer", flexShrink: 0,
-  filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.6))",
-};
 
 const styles: Record<string, React.CSSProperties> = {
   seatList: { display: "flex", flexDirection: "column", gap: 10 },
