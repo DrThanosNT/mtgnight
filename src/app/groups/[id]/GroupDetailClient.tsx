@@ -102,7 +102,7 @@ export default function GroupDetailClient({
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {members.map((m) => (
             <div key={m.userId} style={memberRow}>
-              <Link href={`/profile/${encodeURIComponent(m.displayName)}`} style={{ color: "white", textDecoration: "none" }}>
+              <Link href={`/profile/${encodeURIComponent(m.displayName.trim())}`} style={{ color: "white", textDecoration: "none" }}>
                 {m.displayName} {m.isMe && <span style={{ opacity: 0.5 }}>(you)</span>}
               </Link>
               {m.isOwner && <span style={{ fontSize: 12, opacity: 0.6 }}>Owner</span>}

@@ -104,6 +104,8 @@ model Deck {
   owner              User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name               String
   format             Format
+  commanderName      String?
+  partnerName        String?
   backgroundImageUrl String?
   backgroundCardName String?
   createdAt          DateTime @default(now())

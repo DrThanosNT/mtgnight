@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
+import { isCommanderLikeFormat } from "@/lib/formats";
 
 const FORMAT_OPTIONS = [
   { key: "COMMANDER", label: "Commander (EDH)" },
@@ -17,7 +17,11 @@ const FORMAT_OPTIONS = [
   { key: "BRAWL", label: "Brawl" },
 ];
 
-type Deck = { id: string; name: string; format: string; backgroundImageUrl?: string | null; backgroundCardName?: string | null };
+type Deck = {
+  id: string; name: string; format: string;
+  commanderName?: string | null; partnerName?: string | null;
+  backgroundImageUrl?: string | null; backgroundCardName?: string | null;
+};
 type Option = { id: string; name: string };
 type SeatStat = { seat: number; gamesPlayed: number; wins: number; winRate: number };
 type TurnStat = { turn: number; count: number; percent: number };
@@ -32,6 +36,8 @@ export default function ProfileClient({ displayName, email }: { displayName: str
   const [decks, setDecks] = useState<Deck[]>([]);
   const [deckName, setDeckName] = useState("");
   const [deckFormat, setDeckFormat] = useState("COMMANDER");
+  const [newCommanderName, setNewCommanderName] = useState("");
+  const [newPartnerName, setNewPartnerName] = useState("");
   const [addingDeck, setAddingDeck] = useState(false);
 
   const [stats, setStats] = useState<StatsResult | null>(null);
@@ -62,13 +68,20 @@ export default function ProfileClient({ displayName, email }: { displayName: str
     const res = await fetch("/api/decks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: deckName, format: deckFormat }),
+      body: JSON.stringify({
+        name: deckName,
+        format: deckFormat,
+        commanderName: newCommanderName || undefined,
+        partnerName: newPartnerName || undefined,
+      }),
     });
     setAddingDeck(false);
     if (res.ok) {
       const deck = await res.json();
       setDecks((prev) => [...prev, deck].sort((a, b) => a.name.localeCompare(b.name)));
       setDeckName("");
+      setNewCommanderName("");
+      setNewPartnerName("");
     }
   }
 
@@ -155,6 +168,12 @@ export default function ProfileClient({ displayName, email }: { displayName: str
                   <button onClick={() => handleDeleteDeck(d.id)} style={tinyDangerBtn}>Remove</button>
                 </span>
               </div>
+              <CommanderEditor
+                deck={d}
+                onUpdated={(id, commanderName, partnerName) =>
+                  setDecks((prev) => prev.map((x) => (x.id === id ? { ...x, commanderName, partnerName } : x)))
+                }
+              />
               <BackgroundPicker
                 deck={d}
                 onUpdated={(id, backgroundImageUrl, backgroundCardName) =>
@@ -170,11 +189,99 @@ export default function ProfileClient({ displayName, email }: { displayName: str
           <select value={deckFormat} onChange={(e) => setDeckFormat(e.target.value)} style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}>
             {FORMAT_OPTIONS.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
           </select>
+          {isCommanderLikeFormat(deckFormat) && (
+            <>
+              <input
+                placeholder="Commander name"
+                value={newCommanderName}
+                onChange={(e) => setNewCommanderName(e.target.value)}
+                style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
+              />
+              <input
+                placeholder="Partner (optional)"
+                value={newPartnerName}
+                onChange={(e) => setNewPartnerName(e.target.value)}
+                style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
+              />
+            </>
+          )}
           <button type="submit" disabled={addingDeck} style={{ ...ghostBtn, width: "100%" }}>{addingDeck ? "Adding…" : "Add deck"}</button>
         </form>
       </section>
 
       <button onClick={handleLogout} style={dangerBtn}>Log out</button>
+    </div>
+  );
+}
+
+function CommanderEditor({
+  deck,
+  onUpdated,
+}: {
+  deck: Deck;
+  onUpdated: (id: string, commanderName: string | null, partnerName: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [commanderInput, setCommanderInput] = useState(deck.commanderName ?? "");
+  const [partnerInput, setPartnerInput] = useState(deck.partnerName ?? "");
+  const [saving, setSaving] = useState(false);
+
+  if (!isCommanderLikeFormat(deck.format)) return null;
+
+  async function save() {
+    setSaving(true);
+    await fetch(`/api/decks/${deck.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commanderName: commanderInput, partnerName: partnerInput }),
+    });
+    setSaving(false);
+    onUpdated(deck.id, commanderInput || null, partnerInput || null);
+    setEditing(false);
+  }
+
+  async function clearPartner() {
+    setPartnerInput("");
+    await fetch(`/api/decks/${deck.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ partnerName: null }),
+    });
+    onUpdated(deck.id, deck.commanderName ?? null, null);
+  }
+
+  if (!editing) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>
+          {deck.commanderName ? `Commander: ${deck.commanderName}${deck.partnerName ? ` / ${deck.partnerName}` : ""}` : "No commander set"}
+        </span>
+        <button onClick={() => setEditing(true)} style={tinyDangerBtn}>Edit</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <input
+        placeholder="Commander name"
+        value={commanderInput}
+        onChange={(e) => setCommanderInput(e.target.value)}
+        style={{ ...selectStyle, width: "100%", boxSizing: "border-box" }}
+      />
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          placeholder="Partner (optional)"
+          value={partnerInput}
+          onChange={(e) => setPartnerInput(e.target.value)}
+          style={{ ...selectStyle, flex: 1, boxSizing: "border-box" }}
+        />
+        {deck.partnerName && <button onClick={clearPartner} style={tinyDangerBtn}>Remove partner</button>}
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={save} disabled={saving} style={ghostBtn}>{saving ? "Saving…" : "Save"}</button>
+        <button onClick={() => setEditing(false)} style={ghostBtn}>Cancel</button>
+      </div>
     </div>
   );
 }

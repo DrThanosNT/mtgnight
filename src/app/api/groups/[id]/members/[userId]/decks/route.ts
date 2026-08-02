@@ -20,9 +20,12 @@ export async function GET(
   const targetMembership = await getActiveMembership(id, userId);
   if (!targetMembership) return NextResponse.json({ error: "That user is not an active member" }, { status: 404 });
 
+  // format: group.format is the actual restriction - a deck tagged for a
+  // different format never shows up here, regardless of which group's
+  // game-setup screen is asking.
   const decks = await prisma.deck.findMany({
     where: { ownerId: userId, format: group.format },
-    select: { id: true, name: true, backgroundImageUrl: true },
+    select: { id: true, name: true, commanderName: true, partnerName: true, backgroundImageUrl: true },
     orderBy: { name: "asc" },
   });
 

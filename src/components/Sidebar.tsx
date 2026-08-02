@@ -55,9 +55,10 @@ export default function Sidebar() {
 }
 
 const toggleBtnStyle: React.CSSProperties = {
-  position: "fixed", top: 16, left: 16, zIndex: 40,
-  width: 40, height: 40, borderRadius: 8, border: "1px solid #333",
-  background: "#1a1a1a", color: "white", fontSize: 18, cursor: "pointer",
+  position: "fixed", top: 14, left: 14, zIndex: 40,
+  width: 32, height: 32, borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)",
+  background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)", fontSize: 14, cursor: "pointer",
+  backdropFilter: "blur(3px)",
 };
 const backdropStyle: React.CSSProperties = {
   position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 45,

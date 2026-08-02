@@ -6,7 +6,7 @@ import { hashPassword, createSession } from "@/lib/auth";
 const schema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
-  displayName: z.string().min(1).max(40),
+  displayName: z.string().trim().min(1).max(40),
 });
 
 export async function POST(req: NextRequest) {

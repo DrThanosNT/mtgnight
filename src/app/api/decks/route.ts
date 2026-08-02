@@ -27,6 +27,8 @@ export async function GET(req: NextRequest) {
 const createSchema = z.object({
   name: z.string().min(1).max(80),
   format: z.enum(FORMAT_KEYS as [string, ...string[]]),
+  commanderName: z.string().max(80).optional(),
+  partnerName: z.string().max(80).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -36,8 +38,16 @@ export async function POST(req: NextRequest) {
   const parsed = createSchema.safeParse(await req.json());
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
+  const { name, format, commanderName, partnerName } = parsed.data;
+
   const deck = await prisma.deck.create({
-    data: { ownerId: user.id, name: parsed.data.name, format: parsed.data.format as any },
+    data: {
+      ownerId: user.id,
+      name,
+      format: format as any,
+      commanderName: commanderName?.trim() || null,
+      partnerName: partnerName?.trim() || null,
+    },
   });
 
   return NextResponse.json(deck);

@@ -41,6 +41,7 @@ export default function CasualPlayPage() {
     return (
       <LifeCounterGame
         mode="casual"
+        format={formatKey}
         startingLife={startingLife}
         initialPlayers={Array.from({ length: playerCount }, (_, i) => ({
           id: `guest-${i}`,

@@ -8,7 +8,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const viewer = await getCurrentUser();
   if (!viewer) redirect("/login");
 
-  const target = await prisma.user.findUnique({ where: { displayName: name } });
+  const target = await prisma.user.findUnique({ where: { displayName: name.trim() } });
   if (!target) notFound();
 
   return <PublicProfileClient displayName={target.displayName} />;

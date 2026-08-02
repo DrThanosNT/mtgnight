@@ -8,7 +8,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ name
   const viewer = await getCurrentUser();
   if (!viewer) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-  const target = await prisma.user.findUnique({ where: { displayName: name } });
+  const target = await prisma.user.findUnique({ where: { displayName: name.trim() } });
   if (!target) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
   const { searchParams } = new URL(req.url);

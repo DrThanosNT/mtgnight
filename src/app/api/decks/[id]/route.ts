@@ -27,13 +27,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const body = await req.json();
-  const updated = await prisma.deck.update({
-    where: { id },
-    data: {
-      backgroundImageUrl: body.backgroundImageUrl ?? null,
-      backgroundCardName: body.backgroundCardName ?? null,
-    },
-  });
+  const data: Record<string, string | null> = {};
 
+  // Each field only gets touched if the caller actually sent it - lets the
+  // background picker PATCH independently of the commander-edit form
+  // without either one accidentally wiping the other's data.
+  if ("backgroundImageUrl" in body) data.backgroundImageUrl = body.backgroundImageUrl ?? null;
+  if ("backgroundCardName" in body) data.backgroundCardName = body.backgroundCardName ?? null;
+  if ("commanderName" in body) data.commanderName = body.commanderName?.trim() || null;
+  if ("partnerName" in body) data.partnerName = body.partnerName?.trim() || null;
+
+  const updated = await prisma.deck.update({ where: { id }, data });
   return NextResponse.json(updated);
 }

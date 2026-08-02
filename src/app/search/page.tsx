@@ -44,7 +44,7 @@ export default function SearchPage() {
         {results?.map((r) => (
           <Link
             key={r.displayName}
-            href={`/profile/${encodeURIComponent(r.displayName)}`}
+            href={`/profile/${encodeURIComponent(r.displayName.trim())}`}
             style={{ padding: "12px 14px", borderRadius: 8, background: "#1a1a1a", color: "white", textDecoration: "none" }}
           >
             {r.displayName}

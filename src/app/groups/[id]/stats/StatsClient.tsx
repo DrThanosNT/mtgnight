@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-type Member = { userId: string; displayName: string; username: string | null };
+type Member = { userId: string; displayName: string };
 type PlayerStat = { userId: string; displayName: string; gamesPlayed: number; wins: number; winRate: number };
 type SeatStat = { seat: number; gamesPlayed: number; wins: number; winRate: number };
 type TurnStat = { turn: number; count: number; percent: number };
@@ -18,6 +18,8 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
   const [deckFilter, setDeckFilter] = useState<{ userId: string; deckId: string; deckName: string } | null>(null);
   const [deckPickerFor, setDeckPickerFor] = useState<string | null>(null);
   const [deckOptions, setDeckOptions] = useState<Deck[]>([]);
+  const [deckOptionsLoading, setDeckOptionsLoading] = useState(false);
+  const deckRequestIdRef = useRef(0);
   const [seatAssignments, setSeatAssignments] = useState<Record<number, string>>({});
 
   const [players, setPlayers] = useState<PlayerStat[]>([]);
@@ -81,8 +83,13 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
       return;
     }
     setDeckPickerFor(userId);
+    setDeckOptions([]); // clear immediately so a previous player's decks never flash while loading
+    setDeckOptionsLoading(true);
+    const requestId = ++deckRequestIdRef.current;
     const res = await fetch(`/api/groups/${groupId}/members/${userId}/stats`);
+    if (requestId !== deckRequestIdRef.current) return; // a newer click superseded this one - drop the stale response
     if (res.ok) setDeckOptions((await res.json()).decksUsed ?? []);
+    setDeckOptionsLoading(false);
   }
 
   function selectDeck(userId: string, deckId: string, deckName: string) {
@@ -175,8 +182,9 @@ export default function StatsClient({ groupId, groupName }: { groupId: string; g
               </div>
               {deckPickerFor === p.userId && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                  {deckOptions.length === 0 && <span style={{ fontSize: 12, opacity: 0.6 }}>No decks recorded for them here.</span>}
-                  {deckOptions.map((d) => (
+                  {deckOptionsLoading && <span style={{ fontSize: 12, opacity: 0.6 }}>Loading…</span>}
+                  {!deckOptionsLoading && deckOptions.length === 0 && <span style={{ fontSize: 12, opacity: 0.6 }}>No decks recorded for them here.</span>}
+                  {!deckOptionsLoading && deckOptions.map((d) => (
                     <button key={d.id} onClick={() => selectDeck(p.userId, d.id, d.name)} style={filterBtn}>{d.name}</button>
                   ))}
                 </div>

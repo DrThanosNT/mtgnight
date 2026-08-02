@@ -80,3 +80,17 @@ export function mapMoxfieldFormat(raw: string | null | undefined): FormatKey | n
 export function getFormatLife(format: FormatKey): number {
   return FORMATS[format].defaultLife;
 }
+
+export const COMMANDER_LIKE_FORMAT_KEYS = [
+  "COMMANDER",
+  "DUEL_COMMANDER",
+  "OATHBREAKER",
+  "BRAWL",
+  "HISTORIC_BRAWL",
+  "TINY_LEADERS",
+  "ARCHENEMY_COMMANDER",
+] as const;
+
+export function isCommanderLikeFormat(format: string): boolean {
+  return (COMMANDER_LIKE_FORMAT_KEYS as readonly string[]).includes(format);
+}

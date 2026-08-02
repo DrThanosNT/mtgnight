@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { colors, primaryBtnStyle, ghostBtnStyle } from "@/lib/theme";
+import { isCommanderLikeFormat } from "@/lib/formats";
 
 // ---------- Types ----------
 
@@ -22,6 +23,8 @@ type SeatPlayer = {
   id: string;
   name: string;
   deckId?: string;
+  commanderName?: string | null;
+  partnerName?: string | null;
   backgroundImageUrl?: string | null;
   color: string;
 };
@@ -29,6 +32,9 @@ type SeatPlayer = {
 type PlayerState = SeatPlayer & {
   life: number;
   counters: Record<CounterType, number>;
+  // Keyed by `${sourcePlayerId}::main` or `${sourcePlayerId}::partner` -
+  // each commander (including a partner) tracks its own 21-damage lethal
+  // threshold independently, matching the real rule.
   commanderDamageTaken: Record<string, number>;
 };
 
@@ -51,16 +57,25 @@ function vibrate(ms: number) {
   }
 }
 
+function mainKey(id: string) {
+  return `${id}::main`;
+}
+function partnerKey(id: string) {
+  return `${id}::partner`;
+}
+
 // ---------- Main component ----------
 
 export default function LifeCounterGame(props: {
   mode: "group" | "casual";
+  format: string;
   startingLife: number;
   initialPlayers: SeatPlayer[];
   onGameEnd?: (result: GameEndResult) => void;
   onExit?: () => void;
 }) {
-  const { mode, startingLife, initialPlayers, onGameEnd, onExit } = props;
+  const { mode, format, startingLife, initialPlayers, onGameEnd, onExit } = props;
+  const showCommanders = isCommanderLikeFormat(format);
 
   const [seating, setSeating] = useState<SeatPlayer[]>(initialPlayers);
   const [phase, setPhase] = useState<Phase>("setup");
@@ -74,12 +89,6 @@ export default function LifeCounterGame(props: {
   const [activeTurnIdx, setActiveTurnIdx] = useState(0);
   const [turnCount, setTurnCount] = useState(1);
 
-  // boardOrder[i] = id of whichever player currently sits in grid cell i.
-  // Kept separate from `players` (which never reorders) and from
-  // `turnOrder` (which drives whose turn it is, independent of physical
-  // position). Dragging on the board only ever mutates this array -
-  // rotation is a property of the cell itself (see getLayout), so
-  // swapping who occupies a cell never touches rotation at all.
   const [boardOrder, setBoardOrder] = useState<string[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
@@ -91,6 +100,10 @@ export default function LifeCounterGame(props: {
 
   function setPlayerBackground(id: string, backgroundImageUrl: string | null) {
     setSeating((prev) => prev.map((p) => (p.id === id ? { ...p, backgroundImageUrl } : p)));
+  }
+
+  function setPlayerCommander(id: string, field: "commanderName" | "partnerName", value: string) {
+    setSeating((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value || null } : p)));
   }
 
   function movePlayer(index: number, dir: -1 | 1) {
@@ -152,12 +165,21 @@ export default function LifeCounterGame(props: {
     const allIds = seating.map((p) => p.id);
 
     setPlayers(
-      seating.map((p) => ({
-        ...p,
-        life: startingLife,
-        counters: { poison: 0, rad: 0, energy: 0, experience: 0, treasure: 0, commanderTax: 0, storm: 0 },
-        commanderDamageTaken: Object.fromEntries(allIds.filter((id) => id !== p.id).map((id) => [id, 0])),
-      }))
+      seating.map((p) => {
+        const commanderDamageTaken: Record<string, number> = {};
+        for (const otherId of allIds) {
+          if (otherId === p.id) continue;
+          const other = seating.find((s) => s.id === otherId)!;
+          commanderDamageTaken[mainKey(otherId)] = 0;
+          if (other.partnerName) commanderDamageTaken[partnerKey(otherId)] = 0;
+        }
+        return {
+          ...p,
+          life: startingLife,
+          counters: { poison: 0, rad: 0, energy: 0, experience: 0, treasure: 0, commanderTax: 0, storm: 0 },
+          commanderDamageTaken,
+        };
+      })
     );
     setTurnOrder(order);
     setBoardOrder(seating.map((p) => p.id));
@@ -182,13 +204,13 @@ export default function LifeCounterGame(props: {
     );
   }
 
-  function adjustCommanderDamage(targetId: string, fromId: string, delta: number) {
+  function adjustCommanderDamage(targetId: string, sourceKey: string, delta: number) {
     setPlayers((prev) =>
       prev.map((p) => {
         if (p.id !== targetId) return p;
-        const current = p.commanderDamageTaken[fromId] ?? 0;
+        const current = p.commanderDamageTaken[sourceKey] ?? 0;
         const nextVal = Math.max(0, current + delta);
-        return { ...p, commanderDamageTaken: { ...p.commanderDamageTaken, [fromId]: nextVal } };
+        return { ...p, commanderDamageTaken: { ...p.commanderDamageTaken, [sourceKey]: nextVal } };
       })
     );
   }
@@ -217,10 +239,6 @@ export default function LifeCounterGame(props: {
   }
 
   function confirmWinner(winnerId: string | null) {
-    // Guards against the double-submit bug: a ref check is synchronous
-    // and blocks re-entry immediately, unlike a state flag which can lag
-    // a tick behind a fast double-tap. Once this fires once for a given
-    // game, every further call is a no-op.
     if (submittedRef.current) return;
     submittedRef.current = true;
     setSubmitting(true);
@@ -283,6 +301,22 @@ export default function LifeCounterGame(props: {
                     <button onClick={() => movePlayer(i, 1)} style={styles.smallBtn}>↓</button>
                   </div>
                 </div>
+                {mode === "casual" && showCommanders && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                    <input
+                      placeholder="Commander name"
+                      value={p.commanderName ?? ""}
+                      onChange={(e) => setPlayerCommander(p.id, "commanderName", e.target.value)}
+                      style={styles.commanderInput}
+                    />
+                    <input
+                      placeholder="Partner (optional)"
+                      value={p.partnerName ?? ""}
+                      onChange={(e) => setPlayerCommander(p.id, "partnerName", e.target.value)}
+                      style={styles.commanderInput}
+                    />
+                  </div>
+                )}
                 {mode === "casual" && (
                   <SeatBackgroundPicker
                     backgroundImageUrl={p.backgroundImageUrl ?? null}
@@ -393,6 +427,7 @@ export default function LifeCounterGame(props: {
         players={players}
         turnOrder={turnOrder}
         activeTurnIdx={activeTurnIdx}
+        showCommanders={showCommanders}
         onLifeChange={adjustLife}
         onCounterChange={adjustCounter}
         onCommanderDamageChange={adjustCommanderDamage}
@@ -410,6 +445,7 @@ function GameBoard({
   players,
   turnOrder,
   activeTurnIdx,
+  showCommanders,
   onLifeChange,
   onCounterChange,
   onCommanderDamageChange,
@@ -420,9 +456,10 @@ function GameBoard({
   players: PlayerState[];
   turnOrder: string[];
   activeTurnIdx: number;
+  showCommanders: boolean;
   onLifeChange: (id: string, delta: number) => void;
   onCounterChange: (id: string, type: CounterType, delta: number) => void;
-  onCommanderDamageChange: (id: string, fromId: string, delta: number) => void;
+  onCommanderDamageChange: (id: string, sourceKey: string, delta: number) => void;
   onSwapPositions: (indexA: number, indexB: number) => void;
 }) {
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
@@ -482,9 +519,10 @@ function GameBoard({
                   player={player}
                   allPlayers={players}
                   isActiveTurn={turnOrder[activeTurnIdx] === player.id}
+                  showCommanders={showCommanders}
                   onLifeChange={(d) => onLifeChange(player.id, d)}
                   onCounterChange={(t, d) => onCounterChange(player.id, t, d)}
-                  onCommanderDamageChange={(fromId, d) => onCommanderDamageChange(player.id, fromId, d)}
+                  onCommanderDamageChange={(sourceKey, d) => onCommanderDamageChange(player.id, sourceKey, d)}
                   onDragHandleDown={(e) => handleDragHandlePointerDown(e, i, player.color)}
                   onDragHandleMove={handleDragHandlePointerMove}
                   onDragHandleUp={handleDragHandlePointerUp}
@@ -495,10 +533,6 @@ function GameBoard({
         })}
       </div>
 
-      {/* Drag ghost - deliberately NOT rotated, just a simple floating
-          indicator following the finger. It doesn't need to represent the
-          card's rotated orientation since it's only a drag cue, not the
-          actual content. */}
       {dragPos && (
         <div
           style={{
@@ -634,11 +668,21 @@ function RotatableBlock({ rotation, children }: { rotation: 0 | 90 | 180 | 270; 
 }
 
 // ---------- Tap-vs-hold life button ----------
+// No fill anymore - just a shadowed glyph. Fires onActiveChange(true/false)
+// so the parent can flash that half of the card white while pressed/held.
 
-const HOLD_THRESHOLD_MS = 750;
-const HOLD_REPEAT_MS = 750;
+const HOLD_THRESHOLD_MS = 500;
+const HOLD_REPEAT_MS = 500;
 
-function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number) => void }) {
+function LifeButton({
+  sign,
+  onChange,
+  onActiveChange,
+}: {
+  sign: 1 | -1;
+  onChange: (delta: number) => void;
+  onActiveChange: (active: boolean) => void;
+}) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const holdTriggeredRef = useRef(false);
@@ -654,6 +698,7 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
     e.stopPropagation();
     if (activeRef.current) return;
     activeRef.current = true;
+    onActiveChange(true);
     holdTriggeredRef.current = false;
     timeoutRef.current = setTimeout(() => {
       holdTriggeredRef.current = true;
@@ -666,6 +711,7 @@ function LifeButton({ sign, onChange }: { sign: 1 | -1; onChange: (delta: number
     e.stopPropagation();
     if (!activeRef.current) return;
     activeRef.current = false;
+    onActiveChange(false);
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
@@ -698,6 +744,7 @@ function PlayerBlockContent({
   player,
   allPlayers,
   isActiveTurn,
+  showCommanders,
   onLifeChange,
   onCounterChange,
   onCommanderDamageChange,
@@ -708,9 +755,10 @@ function PlayerBlockContent({
   player: PlayerState;
   allPlayers: PlayerState[];
   isActiveTurn: boolean;
+  showCommanders: boolean;
   onLifeChange: (delta: number) => void;
   onCounterChange: (type: CounterType, delta: number) => void;
-  onCommanderDamageChange: (fromId: string, delta: number) => void;
+  onCommanderDamageChange: (sourceKey: string, delta: number) => void;
   onDragHandleDown: (e: React.PointerEvent) => void;
   onDragHandleMove: (e: React.PointerEvent) => void;
   onDragHandleUp: (e: React.PointerEvent) => void;
@@ -721,6 +769,9 @@ function PlayerBlockContent({
   const [delta, setDelta] = useState<number | null>(null);
   const deltaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [flashLeft, setFlashLeft] = useState(false);
+  const [flashRight, setFlashRight] = useState(false);
+
   function handleLifeChange(amount: number) {
     onLifeChange(amount);
     setDelta((prev) => (prev === null ? amount : prev + amount));
@@ -728,8 +779,8 @@ function PlayerBlockContent({
     deltaTimeoutRef.current = setTimeout(() => setDelta(null), 4000);
   }
 
-  function handleCommanderDamageChange(fromId: string, cdDelta: number) {
-    onCommanderDamageChange(fromId, cdDelta);
+  function handleCommanderDamageChange(sourceKey: string, cdDelta: number) {
+    onCommanderDamageChange(sourceKey, cdDelta);
     handleLifeChange(-cdDelta);
   }
 
@@ -740,6 +791,18 @@ function PlayerBlockContent({
   }, []);
 
   const panelOpen = panel !== "none";
+
+  // Build the list of commander sources across all opponents: one row for
+  // each opponent's main commander, plus a second row if they have a
+  // partner. Falls back to the opponent's own name if no commander name
+  // was ever set (e.g. a casual game where the field was left blank).
+  const commanderRows: { key: string; label: string; color: string }[] = [];
+  for (const opp of opponents) {
+    commanderRows.push({ key: mainKey(opp.id), label: opp.commanderName || opp.name, color: opp.color });
+    if (opp.partnerName) {
+      commanderRows.push({ key: partnerKey(opp.id), label: opp.partnerName, color: opp.color });
+    }
+  }
 
   return (
     <div
@@ -755,8 +818,25 @@ function PlayerBlockContent({
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.06)",
       }}
     >
+      {/* Flash overlays - left/right halves, white, fade in while a button
+          is pressed/held, fade back out on release. */}
+      <div
+        style={{
+          position: "absolute", top: 0, bottom: 0, left: 0, width: "50%",
+          background: "white", opacity: flashLeft ? 0.22 : 0,
+          transition: "opacity 120ms ease-out", pointerEvents: "none", zIndex: 1,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute", top: 0, bottom: 0, right: 0, width: "50%",
+          background: "white", opacity: flashRight ? 0.22 : 0,
+          transition: "opacity 120ms ease-out", pointerEvents: "none", zIndex: 1,
+        }}
+      />
+
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 8px 0", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "6px 8px 0", flexShrink: 0, zIndex: 2 }}>
           <button
             onPointerDown={onDragHandleDown}
             onPointerMove={onDragHandleMove}
@@ -765,7 +845,7 @@ function PlayerBlockContent({
             title="Drag to move this player"
             style={{
               background: "rgba(0,0,0,0.35)", border: "none", color: "white", borderRadius: 8,
-              width: 26, height: 26, fontSize: 14, cursor: "grab", touchAction: "none", flexShrink: 0,
+              width: 28, height: 28, fontSize: 15, cursor: "grab", touchAction: "none", flexShrink: 0,
             }}
           >
             ⠿
@@ -774,10 +854,10 @@ function PlayerBlockContent({
             style={{
               display: "inline-block",
               background: "rgba(0,0,0,0.45)",
-              padding: "3px 10px",
+              padding: "4px 12px",
               borderRadius: 10,
               fontWeight: 700,
-              fontSize: "clamp(14px, 4.2vmin, 20px)",
+              fontSize: "clamp(16px, 4.8vmin, 23px)",
               whiteSpace: "nowrap",
               pointerEvents: "none",
             }}
@@ -786,22 +866,24 @@ function PlayerBlockContent({
           </span>
         </div>
 
-        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 6, flexShrink: 0 }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: 6, marginTop: 6, flexShrink: 0, zIndex: 2 }}>
           <button style={styles.tinyBtn} onClick={() => setPanel(panel === "counters" ? "none" : "counters")}>
             {panel === "counters" ? "Hide" : "Counters"}
           </button>
-          <button style={styles.tinyBtn} onClick={() => setPanel(panel === "commanderDamage" ? "none" : "commanderDamage")}>
-            {panel === "commanderDamage" ? "Hide" : "Cmdr Dmg"}
-          </button>
+          {showCommanders && (
+            <button style={styles.tinyBtn} onClick={() => setPanel(panel === "commanderDamage" ? "none" : "commanderDamage")}>
+              {panel === "commanderDamage" ? "Hide" : "Cmdr Dmg"}
+            </button>
+          )}
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+        <div style={{ flex: 1, minHeight: 0, position: "relative", zIndex: 2 }}>
           {!panelOpen && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
               <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <span
                   style={{
-                    fontSize: "clamp(30px, 13vmin, 64px)",
+                    fontSize: "clamp(34px, 14.5vmin, 72px)",
                     fontWeight: 700,
                     textShadow: "0 2px 6px rgba(0,0,0,0.55), 0 0 2px rgba(0,0,0,0.4)",
                   }}
@@ -812,9 +894,9 @@ function PlayerBlockContent({
                   <span
                     style={{
                       position: "absolute", top: "-1.4em", right: "-1.6em",
-                      fontSize: "clamp(11px, 3vmin, 15px)", fontWeight: 700,
+                      fontSize: "clamp(12px, 3.4vmin, 17px)", fontWeight: 700,
                       color: delta >= 0 ? "#8fd18f" : "#e08080",
-                      background: "rgba(0,0,0,0.45)", padding: "2px 6px", borderRadius: 8,
+                      background: "rgba(0,0,0,0.45)", padding: "2px 7px", borderRadius: 8,
                     }}
                   >
                     {delta > 0 ? `+${delta}` : delta}
@@ -844,22 +926,26 @@ function PlayerBlockContent({
           {panel === "commanderDamage" && (
             <div style={{ position: "absolute", inset: "0 8px 8px 8px", overflowY: "auto" }}>
               <div style={{ ...styles.counterGrid, gridTemplateColumns: "1fr" }}>
-                {opponents.map((opp) => {
-                  const dmg = player.commanderDamageTaken[opp.id] ?? 0;
+                {commanderRows.length === 0 && (
+                  <p style={{ fontSize: 12, opacity: 0.6, padding: 4 }}>No opponents with a set commander yet.</p>
+                )}
+                {commanderRows.map((row) => {
+                  const dmg = player.commanderDamageTaken[row.key] ?? 0;
                   const lethal = dmg >= 21;
                   return (
-                    <div key={opp.id} style={styles.counterRow}>
+                    <div key={row.key} style={styles.counterRow}>
                       <span
                         style={{
-                          ...styles.counterBadge, background: opp.color,
+                          ...styles.counterBadge, background: row.color,
                           outline: lethal ? "2px solid #ff5050" : "none",
                         }}
+                        title={row.label}
                       >
-                        {opp.name.slice(0, 3)}
+                        {row.label.slice(0, 8)}
                       </span>
-                      <button style={styles.counterBtn} onClick={() => handleCommanderDamageChange(opp.id, -1)}>-</button>
+                      <button style={styles.counterBtn} onClick={() => handleCommanderDamageChange(row.key, -1)}>-</button>
                       <span style={{ ...styles.counterValue, color: lethal ? "#ff8080" : "white" }}>{dmg}</span>
-                      <button style={styles.counterBtn} onClick={() => handleCommanderDamageChange(opp.id, 1)}>+</button>
+                      <button style={styles.counterBtn} onClick={() => handleCommanderDamageChange(row.key, 1)}>+</button>
                     </div>
                   );
                 })}
@@ -871,11 +957,11 @@ function PlayerBlockContent({
 
       {!panelOpen && (
         <>
-          <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
-            <LifeButton sign={-1} onChange={handleLifeChange} />
+          <div style={{ position: "absolute", left: 4, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+            <LifeButton sign={-1} onChange={handleLifeChange} onActiveChange={setFlashLeft} />
           </div>
-          <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
-            <LifeButton sign={1} onChange={handleLifeChange} />
+          <div style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+            <LifeButton sign={1} onChange={handleLifeChange} onActiveChange={setFlashRight} />
           </div>
         </>
       )}
@@ -955,19 +1041,21 @@ const centeredPhaseStyle: React.CSSProperties = {
 };
 
 const headingStyle: React.CSSProperties = {
-  fontSize: 24, fontWeight: 700, marginBottom: 6, color: colors.text,
+  fontSize: 26, fontWeight: 700, marginBottom: 6, color: colors.text,
 };
 
 const subtextStyle: React.CSSProperties = {
-  fontSize: 14, opacity: 0.65, marginBottom: 20, color: colors.text, fontFamily: "var(--font-body)",
+  fontSize: 15, opacity: 0.65, marginBottom: 20, color: colors.text, fontFamily: "var(--font-body)",
 };
 
 // ---------- Styles ----------
 
 const lifeButtonStyle: React.CSSProperties = {
-  width: "clamp(40px, 12vmin, 56px)", height: "clamp(40px, 12vmin, 56px)", borderRadius: "50%",
-  border: "none", fontSize: "clamp(20px, 6.5vmin, 30px)", background: "rgba(0,0,0,0.4)",
-  color: "white", cursor: "pointer", flexShrink: 0, fontWeight: 700,
+  width: "clamp(44px, 13vmin, 60px)", height: "clamp(44px, 13vmin, 60px)",
+  border: "none", background: "transparent",
+  fontSize: "clamp(24px, 8vmin, 36px)", fontWeight: 700, color: "white",
+  cursor: "pointer", flexShrink: 0,
+  filter: "drop-shadow(0 2px 3px rgba(0,0,0,0.6))",
 };
 
 const styles: Record<string, React.CSSProperties> = {
@@ -976,23 +1064,27 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex", alignItems: "center", gap: 8, padding: "12px 14px",
     borderRadius: 14, color: "white", width: "100%", boxSizing: "border-box", overflow: "hidden",
   },
-  pickRow: { padding: "16px 16px", borderRadius: 14, color: "white", border: "none", fontSize: 16, cursor: "pointer", textAlign: "left" },
+  pickRow: { padding: "16px 16px", borderRadius: 14, color: "white", border: "none", fontSize: 17, cursor: "pointer", textAlign: "left" },
   dragHandle: { cursor: "grab", opacity: 0.7, flexShrink: 0 },
   nameInput: {
     flex: 1, minWidth: 0, background: "rgba(0,0,0,0.25)", border: "none", color: "white",
-    padding: "6px 8px", borderRadius: 8, fontSize: 15, boxSizing: "border-box",
+    padding: "6px 8px", borderRadius: 8, fontSize: 16, boxSizing: "border-box",
+  },
+  commanderInput: {
+    flex: 1, minWidth: 0, background: "rgba(0,0,0,0.25)", border: "none", color: "white",
+    padding: "6px 8px", borderRadius: 8, fontSize: 13, boxSizing: "border-box",
   },
   nameText: {
-    flex: 1, minWidth: 0, fontSize: 15, overflow: "hidden",
+    flex: 1, minWidth: 0, fontSize: 16, overflow: "hidden",
     textOverflow: "ellipsis", whiteSpace: "nowrap",
   },
   moveButtons: { display: "flex", gap: 4, flexShrink: 0 },
   smallBtn: { background: "rgba(0,0,0,0.3)", color: "white", border: "none", borderRadius: 8, padding: "5px 10px", cursor: "pointer" },
-  tinyBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: "clamp(12px, 3.2vmin, 15px)", fontWeight: 600, cursor: "pointer" },
+  tinyBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: "clamp(13px, 3.4vmin, 16px)", fontWeight: 600, cursor: "pointer" },
   topBar: { display: "flex", justifyContent: "space-between", alignItems: "center", color: "white", padding: "4px 8px", marginBottom: 8, flexShrink: 0 },
   counterGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 10 },
-  counterRow: { display: "flex", alignItems: "center", gap: 6, fontSize: "clamp(12px, 3.2vmin, 15px)" },
-  counterBadge: { fontSize: "clamp(10px, 2.6vmin, 12px)", fontWeight: 700, padding: "4px 8px", borderRadius: 8, minWidth: 34, textAlign: "center" },
-  counterBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, width: "clamp(26px, 7vmin, 34px)", height: "clamp(26px, 7vmin, 34px)", fontSize: "clamp(14px, 3.8vmin, 18px)", fontWeight: 700, cursor: "pointer", flexShrink: 0 },
-  counterValue: { minWidth: 22, textAlign: "center", fontSize: "clamp(13px, 3.4vmin, 16px)", fontWeight: 700 },
+  counterRow: { display: "flex", alignItems: "center", gap: 6, fontSize: "clamp(13px, 3.4vmin, 16px)" },
+  counterBadge: { fontSize: "clamp(10px, 2.8vmin, 13px)", fontWeight: 700, padding: "4px 8px", borderRadius: 8, minWidth: 40, textAlign: "center" },
+  counterBtn: { background: "rgba(0,0,0,0.4)", color: "white", border: "none", borderRadius: 8, width: "clamp(28px, 7.5vmin, 36px)", height: "clamp(28px, 7.5vmin, 36px)", fontSize: "clamp(15px, 4vmin, 19px)", fontWeight: 700, cursor: "pointer", flexShrink: 0 },
+  counterValue: { minWidth: 24, textAlign: "center", fontSize: "clamp(14px, 3.6vmin, 17px)", fontWeight: 700 },
 };
